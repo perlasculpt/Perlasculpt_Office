@@ -236,7 +236,12 @@ app.post('/api/config', (req: Request, res: Response) => {
 app.post('/api/telegram/webhook', validateWebhookSecret, (req: Request, res: Response) => {
   try {
     const bot = getBot();
-    return webhookCallback(bot, 'express')(req, res);
+    
+    // Zid timeoutMilliseconds: 60000 (60 secondes) w timeout: 'return'
+    return webhookCallback(bot, 'express', {
+      timeoutMilliseconds: 60000, // 60s au lieu de 10s
+      onTimeout: 'return',        // Ne crash pas le serveur si timeout
+    })(req, res);
   } catch (error: any) {
     console.error('[Webhook Error]:', error);
     res.status(500).json({ error: error.message });
