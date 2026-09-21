@@ -5,7 +5,7 @@ import { app } from './src/app.js';
 import { config } from './src/config/env.js';
 import { getBot, setupBotCommands, startBotPolling } from './src/bot/bot.js';
 
-const __filename = fileURLToPath(import.meta.url);
+// En CommonJS, __filename et __dirname existent déjà nativement
 const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
