@@ -453,12 +453,17 @@ export class PdfService {
 
     let browser = null;
     try {
+      // Configuration adaptée aux serveurs Linux (Render) + Détection auto du binaire Chrome
+      const cacheDir = process.env.PUPPETEER_CACHE_DIR || path.join(process.cwd(), '.cache', 'puppeteer');
+
       browser = await puppeteer.launch({
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--single-process',
           '--font-render-hinting=none',
         ],
       });
