@@ -1,14 +1,11 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import { app } from './src/app.js';
 import { config } from './src/config/env.js';
 import { getBot, setupBotCommands, startBotPolling } from './src/bot/bot.js';
 
-// En CommonJS, __filename et __dirname existent déjà nativement
-const __dirname = path.dirname(__filename);
-
-const PORT = 3000;
+// En CommonJS, __dirname existe déjà nativement
+const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   // En mode développement, intégrer Vite comme middleware pour React
@@ -34,31 +31,36 @@ async function startServer() {
       await setupBotCommands(bot);
       console.log('[Telegram Bot] Bot initialisé et commandes enregistrées avec succès.');
 
-      // Détection automatique : Si l'URL n'est pas un domaine public HTTPS (ex: en local sur votre PC),
-      // nous démarrons immédiatement le Long Polling afin que Telegram vous réponde instantanément !
-      const isPublicHttps = Boolean(config.appUrl && config.appUrl.startsWith('https://'));
-      if (!isPublicHttps || process.env.USE_POLLING === 'true') {
-        console.log('[Telegram Bot] Environnement Local détecté (http://localhost ou http://0.0.0.0)');
-        console.log('[Telegram Bot] Démarrage du mode Long Polling (écoute directe sans besoin de tunnel/ngrok)...');
-        await startBotPolling(bot);
-      } else {
-        // En hébergement cloud public HTTPS (ex: Cloud Run)
-        const webhookUrl = `${config.appUrl}/api/telegram/webhook`;
+      // Détection de l'URL publique (Render fournit automatiquement process.env.RENDER_EXTERNAL_URL)
+      const publicUrl = process.env.RENDER_EXTERNAL_URL || config.appUrl;
+      const isRenderProd = Boolean(process.env.RENDER || (publicUrl && publicUrl.startsWith('https://')));
+
+      if (isRenderProd && process.env.USE_POLLING !== 'true') {
+        // En hébergement Cloud (Render), activation obligatoire du WEBHOOK
+        const webhookUrl = `${publicUrl}/api/telegram/webhook`;
+        
+        // Supprimer l'ancien webhook/polling en attente
+        await bot.api.deleteWebhook({ drop_pending_updates: true });
+        
+        // Enregistrer le nouveau webhook
         await bot.api.setWebhook(webhookUrl, {
           secret_token: config.telegram.secretToken || undefined,
         });
-        console.log(`[Telegram Bot] Mode Webhook activé sur : ${webhookUrl}`);
+        console.log(`[Telegram Bot] Mode Webhook activé avec succès sur : ${webhookUrl}`);
+      } else {
+        // Mode Long Polling uniquement pour le dev local sur ton PC
+        console.log('[Telegram Bot] Environnement Local détecté. Démarrage du mode Long Polling...');
+        await startBotPolling(bot);
       }
     } catch (err: any) {
       console.warn('[Telegram Bot] Erreur démarrage bot:', err.message);
     }
   } else {
-    console.log('[Telegram Bot] Aucun Token Telegram réel configuré dans .env. Utilisez le simulateur Web ou ajoutez votre TELEGRAM_BOT_TOKEN.');
+    console.log('[Telegram Bot] Aucun Token Telegram réel configuré.');
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Perla ERP Server] Serveur démarré sur http://0.0.0.0:${PORT}`);
-    console.log(`[Perla ERP Server] Interface Web: http://localhost:${PORT}`);
+    console.log(`[Perla ERP Server] Serveur démarré sur le port ${PORT}`);
   });
 }
 
