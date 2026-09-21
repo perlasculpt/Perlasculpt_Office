@@ -1,0 +1,489 @@
+import fs from 'fs';
+import path from 'path';
+import handlebars from 'handlebars';
+import puppeteer from 'puppeteer';
+import { CryptoService } from './cryptoService.js';
+import { config } from '../config/env.js';
+import { PERLA_LOGO_BASE64 } from '../templates/logoBase64.js';
+
+// Cache des templates compilés
+let devisEtrangerTemplate: handlebars.TemplateDelegate | null = null;
+let devisTunisienTemplate: handlebars.TemplateDelegate | null = null;
+let factureEtrangerTemplate: handlebars.TemplateDelegate | null = null;
+let factureTunisienTemplate: handlebars.TemplateDelegate | null = null;
+
+/**
+ * Formate un nombre au format monétaire tunisien (ex: 250,000 ou 4 800,000)
+ * Règle : virgule + 3 décimales
+ */
+export function formatTND(amount: number): string {
+  if (amount === undefined || amount === null || isNaN(amount)) return '0,000';
+  return amount.toLocaleString('fr-FR', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+}
+
+/**
+ * Formate un nombre au format monétaire Euro (ex: 150,00 ou 1 200,00)
+ * Règle : virgule + 2 décimales
+ */
+export function formatEUR(amount: number): string {
+  if (amount === undefined || amount === null || isNaN(amount)) return '0,00';
+  return amount.toLocaleString('fr-FR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Convertit un montant en lettres (Français)
+ */
+export function numberToFrenchWords(amount: number): string {
+  const units = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf'];
+  const teens = ['dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf'];
+  const tens = ['', 'dix', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante-dix', 'quatre-vingt', 'quatre-vingt-dix'];
+
+  function convertGroup(n: number): string {
+    let result = '';
+    const hundreds = Math.floor(n / 100);
+    const remainder = n % 100;
+
+    if (hundreds > 0) {
+      if (hundreds === 1) {
+        result += 'cent ';
+      } else {
+        result += units[hundreds] + ' cent ';
+      }
+    }
+
+    if (remainder >= 10 && remainder < 20) {
+      result += teens[remainder - 10] + ' ';
+    } else if (remainder >= 20) {
+      const ten = Math.floor(remainder / 10);
+      const unit = remainder % 10;
+      if (ten === 7) {
+        result += 'soixante-' + teens[unit] + ' ';
+      } else if (ten === 9) {
+        result += 'quatre-vingt-' + teens[unit] + ' ';
+      } else {
+        result += tens[ten];
+        if (unit === 1 && ten !== 8) {
+          result += ' et un ';
+        } else if (unit > 0) {
+          result += '-' + units[unit] + ' ';
+        } else {
+          result += ' ';
+        }
+      }
+    } else if (remainder > 0) {
+      result += units[remainder] + ' ';
+    }
+
+    return result.trim();
+  }
+
+  const integerPart = Math.floor(amount);
+  const thousands = Math.floor(integerPart / 1000);
+  const hundredsPart = integerPart % 1000;
+
+  let words = '';
+  if (thousands > 0) {
+    if (thousands === 1) {
+      words += 'mille ';
+    } else {
+      words += convertGroup(thousands) + ' mille ';
+    }
+  }
+
+  if (hundredsPart > 0 || words === '') {
+    words += convertGroup(hundredsPart);
+  }
+
+  return words.trim();
+}
+
+export class PdfService {
+  /**
+   * Charge et compile les 4 templates Handlebars
+   */
+  private static loadTemplates() {
+    const templatesDir = path.resolve(process.cwd(), 'src/templates');
+
+    if (!devisEtrangerTemplate) {
+      const src = fs.readFileSync(path.join(templatesDir, 'devis_etranger.hbs'), 'utf8');
+      devisEtrangerTemplate = handlebars.compile(src);
+    }
+    if (!devisTunisienTemplate) {
+      const src = fs.readFileSync(path.join(templatesDir, 'devis_tunisien.hbs'), 'utf8');
+      devisTunisienTemplate = handlebars.compile(src);
+    }
+    if (!factureEtrangerTemplate) {
+      const src = fs.readFileSync(path.join(templatesDir, 'facture_etranger.hbs'), 'utf8');
+      factureEtrangerTemplate = handlebars.compile(src);
+    }
+    if (!factureTunisienTemplate) {
+      const src = fs.readFileSync(path.join(templatesDir, 'facture_tunisien.hbs'), 'utf8');
+      factureTunisienTemplate = handlebars.compile(src);
+    }
+  }
+
+  /**
+   * Détermine si le document ou patient est considéré étranger
+   */
+  public static isEtranger(facture: any, patient: any): boolean {
+    if (facture?.clientType === 'ETRANGER') return true;
+    if (facture?.clientType === 'TUNISIEN') return false;
+    const nat = (patient?.nationalite || '').toLowerCase();
+    return nat !== '' && nat !== 'tunisienne' && nat !== 'tunisien' && nat !== 'tn';
+  }
+
+  /**
+   * Prépare le contexte complet de données pour Handlebars en tenant compte des variables des 4 modèles
+   */
+  public static prepareContext(facture: any, patient: any) {
+    const isDevis = facture.type === 'DEVIS';
+    const isEtranger = this.isEtranger(facture, patient);
+    const devise = isEtranger ? 'EUR' : 'TND';
+    const fmt = isEtranger ? formatEUR : formatTND;
+
+    // Déchiffrement sécurisé du passeport / CIN
+    let passeportClair = patient?.passeport || '';
+    if (patient?.passeportEncrypted) {
+      try {
+        passeportClair = CryptoService.decrypt(patient.passeportEncrypted);
+      } catch {
+        passeportClair = '—';
+      }
+    } else if (typeof patient?.getPasseport === 'function') {
+      try {
+        passeportClair = patient.getPasseport();
+      } catch {
+        passeportClair = '—';
+      }
+    }
+
+    // Prestations médicales
+    let rawPrestations = facture.prestations || [];
+    if (!rawPrestations.length) {
+      rawPrestations = [
+        {
+          designation: facture.actePrincipal || 'Intervention chirurgicale',
+          quantite: 1,
+          prixUnitaire: facture.totalHT || 3000,
+        },
+      ];
+    }
+
+    let sousTotalPrestations = 0;
+    const prestationsMedicales = rawPrestations.map((p: any) => {
+      const q = p.quantite || 1;
+      const pu = p.prixUnitaire || 0;
+      const ligne = q * pu;
+      sousTotalPrestations += ligne;
+      return {
+        designation: p.designation,
+        detail: p.detail || '',
+        quantite: q,
+        prixUnitaire: pu,
+        prixUnitaireFormatted: fmt(pu),
+        montantFormatted: fmt(ligne),
+      };
+    });
+
+    // Helper pour récupérer ou calculer les montants des 12 prestations médicales
+    const getPresPrice = (keywords: string[], fallback: number): number => {
+      const match = rawPrestations.find((p: any) =>
+        keywords.some(k => (p.designation || '').toLowerCase().includes(k.toLowerCase()))
+      );
+      if (match) {
+        return (Number(match.prixUnitaire) || 0) * (Number(match.quantite) || 1);
+      }
+      return fallback;
+    };
+
+    const sejourCliniqueItem = rawPrestations.find((p: any) =>
+      (p.designation || '').toLowerCase().includes('clinique') ||
+      (p.designation || '').toLowerCase().includes('séjour')
+    );
+    const nuitsClinique = sejourCliniqueItem?.quantite || Number(facture.nuitsClinique) || 1;
+
+    // Détermination des montants des 12 prestations
+    // Si l'utilisateur a saisi une prestation globale (ex: 3500), on ajuste les honoraires
+    const defaultConsultation = isEtranger ? 50 : 100;
+    const defaultBilan = 150;
+    const defaultAnesthesie = isEtranger ? 350 : 400;
+    const defaultBloc = isEtranger ? 550 : 600;
+    const defaultSejourClinique = isEtranger ? 200 * nuitsClinique : 350 * nuitsClinique;
+    const defaultSoins = 150;
+    const defaultMedicaments = 100;
+    const defaultContention = 120;
+    const defaultDrainage = 150;
+    const defaultAccompagnateur = 0;
+    const defaultControle = 0;
+
+    let p_consultation = getPresPrice(['consultation'], -1);
+    let p_bilan = getPresPrice(['bilan', 'examen'], -1);
+    let p_honoraires = getPresPrice(['honoraires', 'chirurgien', 'chirurgicaux'], -1);
+    let p_anesthesie = getPresPrice(['anesthésie', 'anesthesie'], -1);
+    let p_bloc = getPresPrice(['bloc'], -1);
+    let p_sejour_clinique = getPresPrice(['clinique', 'séjour en clinique'], -1);
+    let p_soins = getPresPrice(['soins et surveillance', 'surveillance post'], -1);
+    let p_medicaments = getPresPrice(['médicaments', 'medicaments'], -1);
+    let p_contention = getPresPrice(['contention', 'gaine'], -1);
+    let p_drainage = getPresPrice(['drainage'], -1);
+    let p_accompagnateur = getPresPrice(['supp. accompagnateur', 'supplément accompagnateur'], -1);
+    let p_controle = getPresPrice(['contrôle', 'controle'], -1);
+
+    // Si aucune des prestations détaillées n'est trouvée (ex: création rapide avec total global)
+    const hasDetailedPres = [p_consultation, p_bilan, p_honoraires, p_anesthesie, p_bloc].some(v => v !== -1);
+    if (!hasDetailedPres) {
+      const fixedCharges = defaultConsultation + defaultBilan + defaultAnesthesie + defaultBloc + defaultSejourClinique + defaultSoins + defaultMedicaments + defaultContention + defaultDrainage;
+      const targetPrestations = (facture.totalHT && !isEtranger) ? facture.totalHT : (facture.totalPrestations || 3500);
+      const computedHonoraires = Math.max(500, targetPrestations - fixedCharges);
+
+      p_consultation = defaultConsultation;
+      p_bilan = defaultBilan;
+      p_honoraires = computedHonoraires;
+      p_anesthesie = defaultAnesthesie;
+      p_bloc = defaultBloc;
+      p_sejour_clinique = defaultSejourClinique;
+      p_soins = defaultSoins;
+      p_medicaments = defaultMedicaments;
+      p_contention = defaultContention;
+      p_drainage = defaultDrainage;
+      p_accompagnateur = defaultAccompagnateur;
+      p_controle = defaultControle;
+    } else {
+      if (p_consultation === -1) p_consultation = defaultConsultation;
+      if (p_bilan === -1) p_bilan = defaultBilan;
+      if (p_honoraires === -1) p_honoraires = isEtranger ? 2000 : 2200;
+      if (p_anesthesie === -1) p_anesthesie = defaultAnesthesie;
+      if (p_bloc === -1) p_bloc = defaultBloc;
+      if (p_sejour_clinique === -1) p_sejour_clinique = defaultSejourClinique;
+      if (p_soins === -1) p_soins = defaultSoins;
+      if (p_medicaments === -1) p_medicaments = defaultMedicaments;
+      if (p_contention === -1) p_contention = defaultContention;
+      if (p_drainage === -1) p_drainage = defaultDrainage;
+      if (p_accompagnateur === -1) p_accompagnateur = defaultAccompagnateur;
+      if (p_controle === -1) p_controle = defaultControle;
+    }
+
+    const calculatedSousTotalPrestations =
+      p_consultation + p_bilan + p_honoraires + p_anesthesie + p_bloc +
+      p_sejour_clinique + p_soins + p_medicaments + p_contention + p_drainage +
+      p_accompagnateur + p_controle;
+
+    // Hôtel (spécifique étranger)
+    const nomHotel = facture.nomHotel || 'Hôtel The Residence Tunis 5★';
+    const nuitsHotel = facture.nuitsHotel ? String(facture.nuitsHotel).replace(/nuits?/i, '').trim() : '4';
+    const montantHotel = Number(facture.montantHotel) !== undefined && !isNaN(Number(facture.montantHotel))
+      ? Number(facture.montantHotel)
+      : (isEtranger ? 400 : 0);
+    const nuitsAccompagnateurHotel = facture.nuitsAccompagnateurHotel ? String(facture.nuitsAccompagnateurHotel).replace(/nuits?/i, '').trim() : '';
+    const montantAccompagnateurHotel = Number(facture.montantAccompagnateurHotel) || 0;
+    const sousTotalHotel = montantHotel + montantAccompagnateurHotel;
+
+    // Transferts (spécifique étranger)
+    let rawTransferts = facture.transferts || [];
+    if (!rawTransferts.length && isEtranger) {
+      rawTransferts = [
+        { designation: 'Accueil à l’aéroport', quantite: 1, montant: 30 },
+        { designation: 'Transfert aéroport – hôtel', quantite: 1, montant: 35 },
+        { designation: 'Transfert hôtel – clinique', quantite: 1, montant: 25 },
+        { designation: 'Transfert clinique – hôtel', quantite: 1, montant: 25 },
+        { designation: 'Transfert hôtel – aéroport', quantite: 1, montant: 35 },
+        { designation: 'Assistance pendant le séjour', quantite: 1, montant: 50 },
+      ];
+    }
+
+    const getTransMnt = (keywords: string[], def: number): number => {
+      const match = rawTransferts.find((t: any) =>
+        keywords.some(k => (t.designation || '').toLowerCase().includes(k.toLowerCase()))
+      );
+      return match ? Number(match.montant) || 0 : def;
+    };
+
+    const m_accueil_val = getTransMnt(['accueil'], 30);
+    const m_trans_aero_hotel_val = getTransMnt(['aéroport – hôtel', 'aeroport - hotel'], 35);
+    const m_trans_hotel_cli_val = getTransMnt(['hôtel – clinique', 'hotel - clinique'], 25);
+    const m_trans_cli_hotel_val = getTransMnt(['clinique – hôtel', 'clinique - hotel'], 25);
+    const m_trans_hotel_aero_val = getTransMnt(['hôtel – aéroport', 'hotel - aeroport'], 35);
+    const m_assistance_val = getTransMnt(['assistance'], 50);
+
+    const sousTotalTransferts = m_accueil_val + m_trans_aero_hotel_val + m_trans_hotel_cli_val +
+      m_trans_cli_hotel_val + m_trans_hotel_aero_val + m_assistance_val;
+
+    // Total séjour / Total facture
+    let totalGeneral = isEtranger
+      ? calculatedSousTotalPrestations + sousTotalHotel + sousTotalTransferts
+      : calculatedSousTotalPrestations;
+
+    if (facture.totalHT && facture.totalHT > 0 && !isEtranger) {
+      totalGeneral = facture.totalHT;
+    }
+
+    const acompte = Number(facture.acompte) || 0;
+    const soldeRestant = Math.max(0, totalGeneral - acompte);
+
+    // Dates
+    const dateFacture = facture.dateFacture || (facture.createdAt
+      ? new Date(facture.createdAt).toLocaleDateString('fr-FR')
+      : new Date().toLocaleDateString('fr-FR'));
+    const dateDevis = facture.dateDevis || dateFacture;
+    const dateIntervention =
+      facture.dateIntervention || dateFacture;
+    const validiteDevis = facture.validiteDevis || '30 jours';
+    const zonesTraitees =
+      facture.zonesTraitees || 'Zone abdominale + flancs';
+    const dureeSejourClinique = facture.dureeSejourClinique || `${nuitsClinique} nuit(s)`;
+    const dureeTotaleSejour = facture.dureeTotaleSejour || (isEtranger ? '5 jours / 4 nuits' : dureeSejourClinique);
+    const interventionPrevue = facture.interventionPrevue || `${facture.actePrincipal || 'Liposuccion'} — ${zonesTraitees}`;
+    const interventionTitle = facture.actePrincipal || 'Liposuccion';
+    const patientNomPrenom = patient?.nomPrenom || 'Patiente Inconnue';
+    const cinPasseport = passeportClair || '—';
+    const dateNaissance = patient?.dateNaissance || '—';
+
+    return {
+      logoBase64: PERLA_LOGO_BASE64,
+      numeroFacture: facture.numeroFacture || 'FAC-001',
+      type: isDevis ? 'Devis' : 'Facture',
+      isDevis,
+      isEtranger,
+      devise,
+      docSub: interventionTitle,
+      interventionTitle,
+      actePrincipal: interventionTitle,
+      interventionPrevue,
+      patientNomPrenom,
+      cinPasseport,
+      dateNaissance,
+      dateDevis,
+      dateFacture,
+      dateIntervention,
+      validiteDevis,
+      zonesTraitees,
+      dureeSejour: dureeTotaleSejour,
+      dureeSejourClinique,
+      dureeTotaleSejour,
+      modeReglement: facture.modeReglement || 'Virement bancaire / Espèces',
+
+      // Les 12 prestations formatées pour les templates
+      nuitsClinique,
+      m_consultation: fmt(p_consultation),
+      m_bilan: fmt(p_bilan),
+      m_honoraires: fmt(p_honoraires),
+      m_anesthesie: fmt(p_anesthesie),
+      m_bloc: fmt(p_bloc),
+      m_sejour_clinique: fmt(p_sejour_clinique),
+      m_soins: fmt(p_soins),
+      m_medicaments: fmt(p_medicaments),
+      m_contention: fmt(p_contention),
+      m_drainage: fmt(p_drainage),
+      m_accompagnateur: fmt(p_accompagnateur),
+      m_controle: fmt(p_controle),
+      sousTotalPrestations: fmt(calculatedSousTotalPrestations),
+
+      // Hôtel
+      nomHotel,
+      nuitsHotel,
+      m_hotel: fmt(montantHotel),
+      nuitsAccompagnateurHotel: nuitsAccompagnateurHotel || '0',
+      m_accompagnateur_hotel: fmt(montantAccompagnateurHotel),
+      sousTotalHotel: fmt(sousTotalHotel),
+
+      // Transferts
+      m_accueil: fmt(m_accueil_val),
+      m_trans_aero_hotel: fmt(m_trans_aero_hotel_val),
+      m_trans_hotel_cli: fmt(m_trans_hotel_cli_val),
+      m_trans_cli_hotel: fmt(m_trans_cli_hotel_val),
+      m_trans_hotel_aero: fmt(m_trans_hotel_aero_val),
+      m_assistance: fmt(m_assistance_val),
+      sousTotalTransferts: fmt(sousTotalTransferts),
+
+      // Totaux
+      totalSejour: fmt(totalGeneral),
+      totalFacture: fmt(totalGeneral),
+      montantRegle: fmt(acompte),
+      netAPayer: fmt(soldeRestant),
+      montantEnLettres: numberToFrenchWords(totalGeneral),
+
+      // Objet patient complet
+      patient: {
+        nomPrenom: patientNomPrenom,
+        telephone: patient?.telephone || '',
+        nationalite: patient?.nationalite || (isEtranger ? 'Étrangère' : 'Tunisienne'),
+        paysResidence: patient?.paysResidence || (isEtranger ? 'France' : 'Tunisie'),
+        passeportClair: cinPasseport,
+        dateNaissance,
+      },
+      clinic: config.clinic,
+    };
+  }
+
+  /**
+   * Sélectionne et compile le bon template parmi les 4 selon le type et la nationalité
+   */
+  public static renderHtml(facture: any, patient: any): string {
+    this.loadTemplates();
+    const context = this.prepareContext(facture, patient);
+    const isDevis = facture.type === 'DEVIS';
+    const isEtranger = this.isEtranger(facture, patient);
+
+    if (isDevis) {
+      if (isEtranger) {
+        return devisEtrangerTemplate!(context);
+      } else {
+        return devisTunisienTemplate!(context);
+      }
+    } else {
+      if (isEtranger) {
+        return factureEtrangerTemplate!(context);
+      } else {
+        return factureTunisienTemplate!(context);
+      }
+    }
+  }
+
+  /**
+   * Génère un fichier PDF A4 haute définition avec Puppeteer
+   */
+  public static async generatePdf(facture: any, patient: any): Promise<Buffer> {
+    const html = this.renderHtml(facture, patient);
+
+    let browser = null;
+    try {
+      browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--font-render-hinting=none',
+        ],
+      });
+
+      const page = await browser.newPage();
+
+      await page.setContent(html, {
+        waitUntil: ['load', 'domcontentloaded'],
+      });
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
+      });
+
+      return Buffer.from(pdfBuffer);
+    } catch (error: any) {
+      console.error('[PdfService] Erreur lors de la génération PDF via Puppeteer:', error);
+      throw new Error(`Échec de génération du PDF: ${error.message}`);
+    } finally {
+      if (browser) {
+        await browser.close();
+      }
+    }
+  }
+}

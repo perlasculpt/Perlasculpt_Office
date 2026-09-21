@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Devis – {{interventionTitle}} — Perla Body Sculpt</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    --bordeaux: #4A111C;
+    --creme:    #F3E8DE;
+    --rose:     #C9A6A5;
+    --dore:     #B08D57;
+    --blanc:    #FFF9F5;
+    --texte:    #5A5A5A;
+    --radius:   8px;
+    --serif: 'Playfair Display', Georgia, serif;
+    --sans:  'Plus Jakarta Sans', Arial, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--blanc);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    font-family: var(--sans);
+    font-size: 8px;
+    line-height: 1.35;
+    color: var(--texte);
+  }
+
+  /* ---------- Page A4 ---------- */
+  .page {
+    width: 210mm;
+    height: 296mm;
+    margin: 0 auto;
+    padding: 14px 18px;
+    background: var(--blanc);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 5px;
+    overflow: hidden;
+  }
+
+  .page > section { flex-shrink: 0; }
+
+  /* ---------- HEADER ---------- */
+  .header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--bordeaux);
+  }
+
+  .header-left { text-align: left; }
+
+  .brand-name {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bordeaux);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    line-height: 1.1;
+    margin-bottom: 3px;
+  }
+
+  .brand-info {
+    font-size: 7px;
+    line-height: 1.45;
+    color: var(--texte);
+  }
+
+  .header-center { text-align: center; }
+
+  .logo {
+    width: 64px;
+    height: 64px;
+    object-fit: contain;
+    display: block;
+    margin: 0 auto;
+  }
+
+  .header-right { text-align: right; }
+
+  .doc-title {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bordeaux);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+
+  .doc-sub {
+    font-family: var(--serif);
+    font-size: 9px;
+    color: var(--dore);
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .meta-list {
+    margin-top: 5px;
+    display: grid;
+    gap: 1px;
+    justify-items: end;
+  }
+
+  .meta-row { display: flex; gap: 6px; font-size: 7px; }
+  .meta-row dt { color: var(--texte); }
+  .meta-row dd { color: var(--bordeaux); font-weight: 700; }
+
+  /* ---------- Cartes ---------- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .card {
+    background: var(--creme);
+    border: 1px solid var(--rose);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+  }
+
+  .card-title {
+    font-family: var(--serif);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--bordeaux);
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--rose);
+  }
+
+  .info-list { display: grid; gap: 1px; }
+  .info-row {
+    display: grid;
+    grid-template-columns: 105px 1fr;
+    gap: 5px;
+    font-size: 7.5px;
+  }
+  .info-row dt { color: var(--texte); }
+  .info-row dd { color: var(--bordeaux); font-weight: 600; }
+
+  /* ---------- Section title ---------- */
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 2px 0 4px;
+    font-family: var(--serif);
+    font-size: 8.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--bordeaux);
+  }
+  .section-title::before {
+    content: "";
+    width: 12px;
+    height: 2px;
+    background: var(--rose);
+  }
+
+  /* ---------- Tableaux ---------- */
+  .table-wrap {
+    border: 1px solid var(--rose);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--blanc);
+  }
+
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+  thead th {
+    background: var(--bordeaux);
+    color: #fff;
+    font-weight: 600;
+    font-size: 7px;
+    padding: 4px 7px;
+    text-align: right;
+    letter-spacing: .04em;
+  }
+  thead th:first-child { text-align: left; }
+  thead th.c-center { text-align: center; }
+
+  tbody td {
+    padding: 3px 7px;
+    text-align: right;
+    vertical-align: top;
+    color: var(--texte);
+    font-size: 7px;
+  }
+  tbody td:first-child { text-align: left; }
+  tbody td.c-center { text-align: center; }
+  tbody tr:nth-child(even) td { background: var(--creme); }
+
+  .col-des { width: 58%; }
+  .col-qty { width: 14%; }
+  .col-mnt { width: 28%; }
+
+  .item-name { color: var(--bordeaux); font-weight: 600; display: block; }
+  .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.c-total { color: var(--bordeaux); font-weight: 700; }
+
+  tbody tr.subtotal td {
+    background: var(--creme) !important;
+    border-top: 1px solid var(--rose);
+    font-weight: 700;
+    color: var(--bordeaux);
+    font-family: var(--serif);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border: 1px solid var(--rose);
+    border-radius: 999px;
+    font-size: 6.5px;
+    font-weight: 600;
+    color: var(--bordeaux);
+    background: var(--blanc);
+  }
+
+  /* ---------- Total général ---------- */
+  .grand-total {
+    background: var(--bordeaux);
+    color: #fff;
+    padding: 7px 12px;
+    border-radius: var(--radius);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .grand-total .label {
+    font-family: var(--serif);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .grand-total .value {
+    font-family: var(--serif);
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Accompagnement personnalisé */
+  .accompagnement {
+    background: var(--creme);
+    border: 1px solid var(--rose);
+    border-left: 3px solid var(--dore);
+    border-radius: var(--radius);
+    padding: 5px 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .accompagnement .icon {
+    font-family: var(--serif);
+    font-size: 13px;
+    color: var(--dore);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .accompagnement .text { font-size: 7.5px; line-height: 1.45; color: var(--texte); }
+  .accompagnement .text strong { color: var(--bordeaux); }
+
+  /* ---------- Footer ---------- */
+  .footer {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: auto;
+  }
+
+  .foot-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    font-size: 7px;
+    letter-spacing: .15em;
+    color: var(--bordeaux);
+    padding-top: 4px;
+    border-top: 1px solid var(--rose);
+  }
+
+  @media screen {
+    html, body { background: #E9E2DC; }
+    .page { margin: 24px auto; box-shadow: 0 8px 40px rgba(74,17,28,.15); }
+  }
+  @media print {
+    html, body { background: var(--blanc); width: 210mm; height: 296mm; }
+    .page { margin: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ================= HEADER ================= -->
+  <header class="header">
+
+    <div class="header-left">
+      <div class="brand-name">Perla Body Sculpt</div>
+      <div class="brand-info">
+        22 RUE EMERAUDES, Le Kram, Tunisie<br>
+        Tél : +216 26 723 876<br>
+        perlabodyartcontact@gmail.com<br>
+        MF : 1997944N
+      </div>
+    </div>
+
+    <div class="header-center">
+      <img class="logo" src="{{logoBase64}}" alt="Perla Body Sculpt">
+    </div>
+
+    <div class="header-right">
+      <h1 class="doc-title">Devis</h1>
+      <div class="doc-sub">{{interventionTitle}}</div>
+      <dl class="meta-list">
+        <div class="meta-row"><dt>Date :</dt><dd>{{dateDevis}}</dd></div>
+        <div class="meta-row"><dt>Validité :</dt><dd>{{validiteDevis}}</dd></div>
+        <div class="meta-row"><dt>Patiente :</dt><dd>{{patientNomPrenom}}</dd></div>
+      </dl>
+    </div>
+
+  </header>
+
+  <!-- ================= PATIENTE ================= -->
+  <section>
+    <h2 class="section-title">Informations patiente</h2>
+    <article class="card">
+      <dl class="info-list">
+        <div class="info-row"><dt>Nom &amp; Prénom</dt><dd>{{patientNomPrenom}}</dd></div>
+        <div class="info-row"><dt>Date du devis</dt><dd>{{dateDevis}}</dd></div>
+        <div class="info-row"><dt>Intervention prévue</dt><dd>{{interventionPrevue}}</dd></div>
+        <div class="info-row"><dt>Durée estimative du séjour</dt><dd>{{dureeSejour}}</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <!-- ================= 1. PRESTATIONS MÉDICALES ================= -->
+  <section>
+    <h2 class="section-title">1. Prestations médicales</h2>
+    <div class="table-wrap">
+      <table>
+        <colgroup><col class="col-des"><col class="col-qty"><col class="col-mnt"></colgroup>
+        <thead>
+          <tr><th>Désignation</th><th class="c-center">Quantité</th><th>Montant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Consultation préopératoire</td><td class="c-center">1</td><td class="amount">{{m_consultation}} €</td></tr>
+          <tr><td>Bilan / examens préopératoires</td><td class="c-center">1</td><td class="amount">{{m_bilan}} €</td></tr>
+          <tr><td>Honoraires chirurgicaux</td><td class="c-center">1</td><td class="amount">{{m_honoraires}} €</td></tr>
+          <tr><td>Anesthésie</td><td class="c-center">1</td><td class="amount">{{m_anesthesie}} €</td></tr>
+          <tr><td>Frais de bloc opératoire</td><td class="c-center">1</td><td class="amount">{{m_bloc}} €</td></tr>
+          <tr><td>Séjour en clinique – {{nuitsClinique}} nuit(s)</td><td class="c-center">{{nuitsClinique}}</td><td class="amount">{{m_sejour_clinique}} €</td></tr>
+          <tr><td>Soins et surveillance postopératoires</td><td class="c-center">1</td><td class="amount">{{m_soins}} €</td></tr>
+          <tr><td>Médicaments et soins postopératoires</td><td class="c-center">1</td><td class="amount">{{m_medicaments}} €</td></tr>
+          <tr><td>Vêtement de contention</td><td class="c-center">1</td><td class="amount">{{m_contention}} €</td></tr>
+          <tr><td>Drainage</td><td class="c-center">1</td><td class="amount">{{m_drainage}} €</td></tr>
+          <tr><td>Supp. accompagnateur</td><td class="c-center">1</td><td class="amount">{{m_accompagnateur}} €</td></tr>
+          <tr><td>Contrôle postopératoire</td><td class="c-center">1</td><td class="amount">{{m_controle}} €</td></tr>
+          <tr class="subtotal"><td>Sous-total prestations médicales</td><td></td><td class="amount">{{sousTotalPrestations}} €</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 2. HÉBERGEMENT HÔTELIER ================= -->
+  <section>
+    <h2 class="section-title">2. Hébergement hôtelier</h2>
+    <article class="card" style="margin-bottom: 3px;">
+      <dl class="info-list">
+        <div class="info-row"><dt>Hôtel</dt><dd>{{nomHotel}}</dd></div>
+      </dl>
+    </article>
+    <div class="table-wrap">
+      <table>
+        <colgroup><col class="col-des"><col class="col-qty"><col class="col-mnt"></colgroup>
+        <thead>
+          <tr><th>Désignation</th><th class="c-center">Quantité</th><th>Montant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Hébergement hôtelier</td><td class="c-center">{{nuitsHotel}} nuits</td><td class="amount">{{m_hotel}} €</td></tr>
+          <tr><td>Supp. accompagnateur</td><td class="c-center">{{nuitsAccompagnateurHotel}} nuits</td><td class="amount">{{m_accompagnateur_hotel}} €</td></tr>
+          <tr class="subtotal"><td>Sous-total hôtel</td><td></td><td class="amount">{{sousTotalHotel}} €</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= 3. TRANSFERTS ET ACCOMPAGNEMENT ================= -->
+  <section>
+    <h2 class="section-title">3. Transferts et accompagnement</h2>
+    <div class="table-wrap">
+      <table>
+        <colgroup><col class="col-des"><col class="col-qty"><col class="col-mnt"></colgroup>
+        <thead>
+          <tr><th>Désignation</th><th class="c-center">Quantité</th><th>Montant</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Accueil à l'aéroport</td><td class="c-center">1</td><td class="amount">{{m_accueil}} €</td></tr>
+          <tr><td>Transfert aéroport – hôtel</td><td class="c-center">1</td><td class="amount">{{m_trans_aero_hotel}} €</td></tr>
+          <tr><td>Transfert hôtel – clinique</td><td class="c-center">1</td><td class="amount">{{m_trans_hotel_cli}} €</td></tr>
+          <tr><td>Transfert clinique – hôtel</td><td class="c-center">1</td><td class="amount">{{m_trans_cli_hotel}} €</td></tr>
+          <tr><td>Transfert hôtel – aéroport</td><td class="c-center">1</td><td class="amount">{{m_trans_hotel_aero}} €</td></tr>
+          <tr><td>Assistance pendant le séjour</td><td class="c-center">1</td><td class="amount">{{m_assistance}} €</td></tr>
+          <tr class="subtotal"><td>Sous-total transferts</td><td></td><td class="amount">{{sousTotalTransferts}} €</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ACCOMPAGNEMENT PERSONNALISÉ -->
+  <section>
+    <div class="accompagnement">
+      <span class="icon">✦</span>
+      <p class="text">
+        <strong>Accompagnement personnalisé du patient</strong> avant, pendant et après
+        l'intervention : coordination des rendez-vous, informations préopératoires et
+        suivi postopératoire.
+      </p>
+    </div>
+  </section>
+
+  <!-- ================= TOTAL DU SÉJOUR ================= -->
+  <section>
+    <div class="grand-total">
+      <span class="label">Total du séjour</span>
+      <span class="value">{{totalSejour}} €</span>
+    </div>
+  </section>
+
+  <!-- NE SONT PAS INCLUS -->
+  <section>
+    <article class="card">
+      <h2 class="card-title">Ne sont pas inclus</h2>
+      <p style="font-size:7.5px; line-height:1.45;">
+        Sauf mention contraire : <strong>billet d'avion</strong>, <strong>dépenses personnelles</strong>,
+        <strong>examens ou traitements supplémentaires</strong> rendus nécessaires par l'état de santé
+        de la patiente, <strong>nuits supplémentaires</strong> et prestations non mentionnées dans le
+        présent devis.
+      </p>
+    </article>
+  </section>
+
+  <!-- IMPORTANT -->
+  <section>
+    <article class="card">
+      <h2 class="card-title">Important</h2>
+      <p style="font-size:7.5px; line-height:1.45;">
+        Le devis définitif sera confirmé après consultation médicale et évaluation de
+        l'indication opératoire. La durée d'hospitalisation et les soins postopératoires
+        peuvent être adaptés selon l'évolution clinique de la patiente.
+      </p>
+    </article>
+  </section>
+
+  <!-- ================= CONDITIONS ================= -->
+  <section class="grid-2">
+    <article class="card">
+      <h2 class="card-title">Validité du devis</h2>
+      <p style="font-size:8px;"><strong>{{validiteDevis}}</strong></p>
+    </article>
+    <article class="card">
+      <h2 class="card-title">Conditions de réservation</h2>
+      <p style="font-size:7px; line-height:1.45; color: var(--texte);">
+        Aucun acompte et aucun virement bancaire ne sont demandés pour confirmer votre réservation.
+        Pour organiser votre séjour, il vous suffit de nous transmettre votre billet d'avion.
+      </p>
+    </article>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <div class="foot-bar">
+      <span>★ PERLA BODY SCULPT &nbsp;·&nbsp; 22 RUE EMERAUDES, Le KRAM, TUNIS ★</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
