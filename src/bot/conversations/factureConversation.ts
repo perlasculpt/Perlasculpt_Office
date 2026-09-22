@@ -86,16 +86,31 @@ export async function createDocumentConversation(
   let zonesTraitees = 'Zone abdominale + flancs';
   let customNumeroFacture = '';
 
+  // Saisie optionnelle du Taux EUR/TND pour patientes étrangères
+  let tauxEUR = 3.40;
+
   const todayKeyboard = new Keyboard()
     .text(`📅 Aujourd'hui (${todayStr})`)
     .resized()
     .oneTime();
 
+  if (isEtranger) {
+    await ctx.reply(
+      `💱 <b>TAUX DE CHANGE (EUR ➡️ TND)</b>\n\n` +
+      `Saisissez le taux de conversion EUR ➡️ TND (Défaut: <code>3.40</code>) :`,
+      { parse_mode: 'HTML' }
+    );
+    const tauxMsg = await conversation.waitFor(':text');
+    const parsedTaux = parseFloat(tauxMsg.message?.text?.replace(',', '.') || '3.40');
+    if (!isNaN(parsedTaux) && parsedTaux > 0) {
+      tauxEUR = parsedTaux;
+    }
+  }
+
   if (documentType === 'DEVIS') {
     // ==========================================
     // FLUX SPÉCIFIQUE : DEVIS (Étranger ou Tunisien)
     // ==========================================
-    // SECTION 1 & 2 : HEADER & INFORMATIONS PATIENTE
     await ctx.reply(
       `👤 <b>SECTION 1 & 2 : INFORMATIONS PATIENTE</b>\n\n` +
       `[V03 / V04] Saisissez le <b>Nom & Prénom</b> de la patiente :`,
@@ -177,7 +192,6 @@ export async function createDocumentConversation(
     // ==========================================
     // FLUX SPÉCIFIQUE : FACTURE (Étranger ou Tunisien)
     // ==========================================
-    // SECTION 1 : HEADER
     const nextAutoNum = await conversation.external(() => FinanceService.generateNextNumero('FACTURE'));
     const numKeyboard = new Keyboard()
       .text(`Numéro auto : ${nextAutoNum}`)
@@ -280,25 +294,6 @@ export async function createDocumentConversation(
     { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } }
   );
 
-  /* ANCIEN CODE BOUTONS STANDARD / CUSTOM (DÉSACTIVÉ)
-  const presModeKeyboard = new Keyboard()
-    .text('⚡ Utiliser les tarifs standards de Perla')
-    .row()
-    .text('✏️ Saisir les montants un par un')
-    .resized()
-    .oneTime();
-
-  await ctx.reply(
-    `📋 <b>1. PRESTATIONS MÉDICALES (En ${devise})</b>\n\n` +
-    `Les 12 lignes médicales officielles de Perla Body Sculpt sont prêtes.\n` +
-    `Souhaitez-vous appliquer les tarifs standards ou saisir chaque montant ?`,
-    { parse_mode: 'HTML', reply_markup: presModeKeyboard }
-  );
-
-  const presModeMsg = await conversation.waitFor(':text');
-  const isCustomPres = presModeMsg.message?.text?.includes('un par un');
-  */
-
   // Valeurs par défaut
   let m_consultation = isEtranger ? 50 : 100;
   let m_bilan = 150;
@@ -379,31 +374,6 @@ export async function createDocumentConversation(
   const ctrMsg = await conversation.waitFor(':text');
   const ctrVal = parseFloat(ctrMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(ctrVal)) m_controle = ctrVal;
-
-  /* ANCIENNE BRANCHE DE CONFIRMATION DES TARIFS STANDARDS (DÉSACTIVÉE)
-  const honoKeyboard = new Keyboard()
-    .text(`Garder ${m_honoraires} ${devise}`)
-    .row()
-    .text('Modifier les honoraires')
-    .resized()
-    .oneTime();
-
-  await ctx.reply(
-    `✨ <b>TARIFS STANDARDS APPLIQUÉS !</b>\n` +
-    `Honoraires chirurgicaux actuels : <b>${fmt(m_honoraires)} ${devise}</b>.\n` +
-    `Souhaitez-vous modifier le montant des honoraires chirurgicaux ?`,
-    { parse_mode: 'HTML', reply_markup: honoKeyboard }
-  );
-  const honoChoice = await conversation.waitFor(':text');
-  if (honoChoice.message?.text?.includes('Modifier')) {
-    await ctx.reply(`▫️ Saisissez le montant des <b>Honoraires chirurgicaux</b> en ${devise} :`, {
-      reply_markup: { remove_keyboard: true },
-    });
-    const customHonoMsg = await conversation.waitFor(':text');
-    const customHono = parseFloat(customHonoMsg.message?.text?.replace(',', '.') || '');
-    if (!isNaN(customHono) && customHono > 0) m_honoraires = customHono;
-  }
-  */
 
   // Construction du tableau des prestations pour la base de données
   const prestations = [
@@ -491,6 +461,8 @@ export async function createDocumentConversation(
     ? totalPrestations + montantHotel + montantAccompagnateurHotel + sousTotalTransferts
     : totalPrestations;
 
+  const totalSejourEUR = isEtranger ? totalSejour : (tauxEUR > 0 ? totalSejour / tauxEUR : 0);
+
   let acompte = 0;
   if (documentType === 'FACTURE') {
     await ctx.reply(
@@ -546,6 +518,7 @@ export async function createDocumentConversation(
     (isEtranger ? `• <b>Hôtel 5★</b> : ${nomHotel} (${nuitsHotel} - ${fmt(montantHotel + montantAccompagnateurHotel)} EUR)\n` : '') +
     (isEtranger ? `• <b>Transferts VIP</b> : Inclus (${fmt(sousTotalTransferts)} EUR)\n` : '') +
     `• <b>Total de la pièce</b> : <b>${fmt(totalSejour)} ${devise}</b>\n` +
+    (isEtranger ? `• <b>Taux appliqué</b> : 1 EUR = ${tauxEUR.toFixed(2)} TND\n` : '') +
     (documentType === 'FACTURE' ? `• <b>Déjà réglé</b> : ${fmt(acompte)} ${devise} | <b>Net à payer</b> : <b>${fmt(netAPayer)} ${devise}</b>\n` : '') +
     `• <b>Marge Nette estimée</b> : 💎 <b>${fmt(margeNette)} ${devise}</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
@@ -565,7 +538,6 @@ export async function createDocumentConversation(
   );
 
   try {
-    // Execution externe sécurisée sans passage d'objets Mongoose / Buffer bruts à la mémoire de conversation
     const pdfData = await conversation.external(async () => {
       // 1. Création du document en BDD
       const { doc, patient } = await FinanceService.createDocument({
@@ -595,10 +567,18 @@ export async function createDocumentConversation(
         numeroFacture: customNumeroFacture || undefined,
       });
 
-      // 2. Génération du PDF Buffer avec Puppeteer
-      const buffer = await PdfService.generatePdf(doc, patient);
+      // 2. Génération du PDF Buffer avec Puppeteer en passant le tauxEUR et totalSejourEUR
+      const docObject = doc.toObject ? doc.toObject() : doc;
+      const buffer = await PdfService.generatePdf(
+        {
+          ...docObject,
+          tauxEUR: tauxEUR.toFixed(2),
+          totalSejourEUR: totalSejourEUR.toFixed(2),
+        },
+        patient
+      );
 
-      // 3. On retourne uniquement des types primitifs / basiques compatibles avec structuredClone
+      // 3. Retourne des types primitifs / sérialisables compatibles avec structuredClone
       return {
         bufferBase64: buffer.toString('base64'),
         numeroFacture: doc.numeroFacture,
@@ -606,6 +586,8 @@ export async function createDocumentConversation(
         acompte: doc.acompte,
         soldeRestant: doc.soldeRestant,
         margeNette: doc.margeNette,
+        totalSejourEUR,
+        tauxEUR,
       };
     });
 
@@ -620,6 +602,7 @@ export async function createDocumentConversation(
         `• <b>Patiente</b> : ${nomPrenom}\n` +
         `• <b>Modèle appliqué</b> : ${isEtranger ? 'Étranger (EUR)' : 'Tunisien (TND)'}\n` +
         `• <b>Montant Total</b> : <b>${fmt(pdfData.totalHT)} ${devise}</b>\n` +
+        (isEtranger ? `• <b>Equivalent EUR</b> : <b>${formatEUR(pdfData.totalSejourEUR)} €</b> (Taux: ${pdfData.tauxEUR.toFixed(2)})\n` : '') +
         (documentType === 'FACTURE'
           ? `• <b>Acompte réglé</b> : ${fmt(pdfData.acompte)} ${devise}\n` +
             `• <b>Net à payer</b> : <b>${fmt(pdfData.soldeRestant)} ${devise}</b>\n`
