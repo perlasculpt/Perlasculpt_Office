@@ -144,8 +144,9 @@ export class PdfService {
   public static prepareContext(facture: any, patient: any) {
     const isDevis = facture.type === 'DEVIS';
     const isEtranger = this.isEtranger(facture, patient);
-    const devise = isEtranger ? 'EUR' : 'TND';
-    const fmt = isEtranger ? formatEUR : formatTND;
+
+    // Taux de conversion transmis depuis la facture/devis (défaut: 3.42)
+    const tauxEUR = Number(facture.tauxEUR) || 3.42;
 
     // Déchiffrement sécurisé du passeport / CIN
     let passeportClair = patient?.passeport || '';
@@ -175,23 +176,15 @@ export class PdfService {
       ];
     }
 
-    let sousTotalPrestations = 0;
-    const prestationsMedicales = rawPrestations.map((p: any) => {
+    // Calcul du sous-total des prestations (toujours en TND dans le modèle de saisie)
+    let calculatedSousTotalPrestations = 0;
+    rawPrestations.forEach((p: any) => {
       const q = p.quantite || 1;
       const pu = p.prixUnitaire || 0;
-      const ligne = q * pu;
-      sousTotalPrestations += ligne;
-      return {
-        designation: p.designation,
-        detail: p.detail || '',
-        quantite: q,
-        prixUnitaire: pu,
-        prixUnitaireFormatted: fmt(pu),
-        montantFormatted: fmt(ligne),
-      };
+      calculatedSousTotalPrestations += q * pu;
     });
 
-    // Helper pour récupérer ou calculer les montants des 12 prestations médicales
+    // Helper pour récupérer ou calculer les montants des 12 prestations médicales (en TND)
     const getPresPrice = (keywords: string[], fallback: number): number => {
       const match = rawPrestations.find((p: any) =>
         keywords.some(k => (p.designation || '').toLowerCase().includes(k.toLowerCase()))
@@ -208,95 +201,29 @@ export class PdfService {
     );
     const nuitsClinique = sejourCliniqueItem?.quantite || Number(facture.nuitsClinique) || 1;
 
-    // Détermination des montants des 12 prestations
-    // Si l'utilisateur a saisi une prestation globale (ex: 3500), on ajuste les honoraires
-    const defaultConsultation = isEtranger ? 50 : 100;
-    const defaultBilan = 150;
-    const defaultAnesthesie = isEtranger ? 350 : 400;
-    const defaultBloc = isEtranger ? 550 : 600;
-    const defaultSejourClinique = isEtranger ? 200 * nuitsClinique : 350 * nuitsClinique;
-    const defaultSoins = 150;
-    const defaultMedicaments = 100;
-    const defaultContention = 120;
-    const defaultDrainage = 150;
-    const defaultAccompagnateur = 0;
-    const defaultControle = 0;
+    let p_consultation = getPresPrice(['consultation'], 100);
+    let p_bilan = getPresPrice(['bilan', 'examen'], 150);
+    let p_honoraires = getPresPrice(['honoraires', 'chirurgien', 'chirurgicaux'], 6000);
+    let p_anesthesie = getPresPrice(['anesthésie', 'anesthesie'], 800);
+    let p_bloc = getPresPrice(['bloc'], 1200);
+    let p_sejour_clinique = getPresPrice(['clinique', 'séjour en clinique'], 700 * nuitsClinique);
+    let p_soins = getPresPrice(['soins et surveillance', 'surveillance post'], 200);
+    let p_medicaments = getPresPrice(['médicaments', 'medicaments'], 150);
+    let p_contention = getPresPrice(['contention', 'gaine'], 250);
+    let p_drainage = getPresPrice(['drainage'], 200);
+    let p_accompagnateur = getPresPrice(['supp. accompagnateur', 'supplément accompagnateur'], 0);
+    let p_controle = getPresPrice(['contrôle', 'controle'], 0);
 
-    let p_consultation = getPresPrice(['consultation'], -1);
-    let p_bilan = getPresPrice(['bilan', 'examen'], -1);
-    let p_honoraires = getPresPrice(['honoraires', 'chirurgien', 'chirurgicaux'], -1);
-    let p_anesthesie = getPresPrice(['anesthésie', 'anesthesie'], -1);
-    let p_bloc = getPresPrice(['bloc'], -1);
-    let p_sejour_clinique = getPresPrice(['clinique', 'séjour en clinique'], -1);
-    let p_soins = getPresPrice(['soins et surveillance', 'surveillance post'], -1);
-    let p_medicaments = getPresPrice(['médicaments', 'medicaments'], -1);
-    let p_contention = getPresPrice(['contention', 'gaine'], -1);
-    let p_drainage = getPresPrice(['drainage'], -1);
-    let p_accompagnateur = getPresPrice(['supp. accompagnateur', 'supplément accompagnateur'], -1);
-    let p_controle = getPresPrice(['contrôle', 'controle'], -1);
-
-    // Si aucune des prestations détaillées n'est trouvée (ex: création rapide avec total global)
-    const hasDetailedPres = [p_consultation, p_bilan, p_honoraires, p_anesthesie, p_bloc].some(v => v !== -1);
-    if (!hasDetailedPres) {
-      const fixedCharges = defaultConsultation + defaultBilan + defaultAnesthesie + defaultBloc + defaultSejourClinique + defaultSoins + defaultMedicaments + defaultContention + defaultDrainage;
-      const targetPrestations = (facture.totalHT && !isEtranger) ? facture.totalHT : (facture.totalPrestations || 3500);
-      const computedHonoraires = Math.max(500, targetPrestations - fixedCharges);
-
-      p_consultation = defaultConsultation;
-      p_bilan = defaultBilan;
-      p_honoraires = computedHonoraires;
-      p_anesthesie = defaultAnesthesie;
-      p_bloc = defaultBloc;
-      p_sejour_clinique = defaultSejourClinique;
-      p_soins = defaultSoins;
-      p_medicaments = defaultMedicaments;
-      p_contention = defaultContention;
-      p_drainage = defaultDrainage;
-      p_accompagnateur = defaultAccompagnateur;
-      p_controle = defaultControle;
-    } else {
-      if (p_consultation === -1) p_consultation = defaultConsultation;
-      if (p_bilan === -1) p_bilan = defaultBilan;
-      if (p_honoraires === -1) p_honoraires = isEtranger ? 2000 : 2200;
-      if (p_anesthesie === -1) p_anesthesie = defaultAnesthesie;
-      if (p_bloc === -1) p_bloc = defaultBloc;
-      if (p_sejour_clinique === -1) p_sejour_clinique = defaultSejourClinique;
-      if (p_soins === -1) p_soins = defaultSoins;
-      if (p_medicaments === -1) p_medicaments = defaultMedicaments;
-      if (p_contention === -1) p_contention = defaultContention;
-      if (p_drainage === -1) p_drainage = defaultDrainage;
-      if (p_accompagnateur === -1) p_accompagnateur = defaultAccompagnateur;
-      if (p_controle === -1) p_controle = defaultControle;
-    }
-
-    const calculatedSousTotalPrestations =
-      p_consultation + p_bilan + p_honoraires + p_anesthesie + p_bloc +
-      p_sejour_clinique + p_soins + p_medicaments + p_contention + p_drainage +
-      p_accompagnateur + p_controle;
-
-    // Hôtel (spécifique étranger)
+    // Hôtel (spécifique étranger) - en TND
     const nomHotel = facture.nomHotel || 'Hôtel The Residence Tunis 5★';
     const nuitsHotel = facture.nuitsHotel ? String(facture.nuitsHotel).replace(/nuits?/i, '').trim() : '4';
-    const montantHotel = Number(facture.montantHotel) !== undefined && !isNaN(Number(facture.montantHotel))
-      ? Number(facture.montantHotel)
-      : (isEtranger ? 400 : 0);
+    const montantHotel = Number(facture.montantHotel) || (isEtranger ? 1200 : 0);
     const nuitsAccompagnateurHotel = facture.nuitsAccompagnateurHotel ? String(facture.nuitsAccompagnateurHotel).replace(/nuits?/i, '').trim() : '';
     const montantAccompagnateurHotel = Number(facture.montantAccompagnateurHotel) || 0;
     const sousTotalHotel = montantHotel + montantAccompagnateurHotel;
 
-    // Transferts (spécifique étranger)
+    // Transferts (spécifique étranger) - en TND
     let rawTransferts = facture.transferts || [];
-    if (!rawTransferts.length && isEtranger) {
-      rawTransferts = [
-        { designation: 'Accueil à l’aéroport', quantite: 1, montant: 30 },
-        { designation: 'Transfert aéroport – hôtel', quantite: 1, montant: 35 },
-        { designation: 'Transfert hôtel – clinique', quantite: 1, montant: 25 },
-        { designation: 'Transfert clinique – hôtel', quantite: 1, montant: 25 },
-        { designation: 'Transfert hôtel – aéroport', quantite: 1, montant: 35 },
-        { designation: 'Assistance pendant le séjour', quantite: 1, montant: 50 },
-      ];
-    }
-
     const getTransMnt = (keywords: string[], def: number): number => {
       const match = rawTransferts.find((t: any) =>
         keywords.some(k => (t.designation || '').toLowerCase().includes(k.toLowerCase()))
@@ -304,38 +231,36 @@ export class PdfService {
       return match ? Number(match.montant) || 0 : def;
     };
 
-    const m_accueil_val = getTransMnt(['accueil'], 30);
-    const m_trans_aero_hotel_val = getTransMnt(['aéroport – hôtel', 'aeroport - hotel'], 35);
-    const m_trans_hotel_cli_val = getTransMnt(['hôtel – clinique', 'hotel - clinique'], 25);
-    const m_trans_cli_hotel_val = getTransMnt(['clinique – hôtel', 'clinique - hotel'], 25);
-    const m_trans_hotel_aero_val = getTransMnt(['hôtel – aéroport', 'hotel - aeroport'], 35);
-    const m_assistance_val = getTransMnt(['assistance'], 50);
+    const m_accueil_val = getTransMnt(['accueil'], 100);
+    const m_trans_aero_hotel_val = getTransMnt(['aéroport – hôtel', 'aeroport - hotel'], 120);
+    const m_trans_hotel_cli_val = getTransMnt(['hôtel – clinique', 'hotel - clinique'], 80);
+    const m_trans_cli_hotel_val = getTransMnt(['clinique – hôtel', 'clinique - hotel'], 80);
+    const m_trans_hotel_aero_val = getTransMnt(['hôtel – aéroport', 'hotel - aeroport'], 120);
+    const m_assistance_val = getTransMnt(['assistance'], 150);
 
-    const sousTotalTransferts = m_accueil_val + m_trans_aero_hotel_val + m_trans_hotel_cli_val +
-      m_trans_cli_hotel_val + m_trans_hotel_aero_val + m_assistance_val;
+    const sousTotalTransferts = isEtranger
+      ? (m_accueil_val + m_trans_aero_hotel_val + m_trans_hotel_cli_val + m_trans_cli_hotel_val + m_trans_hotel_aero_val + m_assistance_val)
+      : 0;
 
-    // Total séjour / Total facture
-    let totalGeneral = isEtranger
-      ? calculatedSousTotalPrestations + sousTotalHotel + sousTotalTransferts
-      : calculatedSousTotalPrestations;
-
+    // --- TOTAUX EN TND & CONVERSION EUR ---
+    let totalGeneralTND = calculatedSousTotalPrestations + sousTotalHotel + sousTotalTransferts;
     if (facture.totalHT && facture.totalHT > 0 && !isEtranger) {
-      totalGeneral = facture.totalHT;
+      totalGeneralTND = facture.totalHT;
     }
 
+    const totalGeneralEUR = tauxEUR > 0 ? totalGeneralTND / tauxEUR : 0;
+
     const acompte = Number(facture.acompte) || 0;
-    const soldeRestant = Math.max(0, totalGeneral - acompte);
+    const soldeRestantTND = Math.max(0, totalGeneralTND - acompte);
 
     // Dates
     const dateFacture = facture.dateFacture || (facture.createdAt
       ? new Date(facture.createdAt).toLocaleDateString('fr-FR')
       : new Date().toLocaleDateString('fr-FR'));
     const dateDevis = facture.dateDevis || dateFacture;
-    const dateIntervention =
-      facture.dateIntervention || dateFacture;
+    const dateIntervention = facture.dateIntervention || dateFacture;
     const validiteDevis = facture.validiteDevis || '30 jours';
-    const zonesTraitees =
-      facture.zonesTraitees || 'Zone abdominale + flancs';
+    const zonesTraitees = facture.zonesTraitees || 'Zone abdominale + flancs';
     const dureeSejourClinique = facture.dureeSejourClinique || `${nuitsClinique} nuit(s)`;
     const dureeTotaleSejour = facture.dureeTotaleSejour || (isEtranger ? '5 jours / 4 nuits' : dureeSejourClinique);
     const interventionPrevue = facture.interventionPrevue || `${facture.actePrincipal || 'Liposuccion'} — ${zonesTraitees}`;
@@ -350,7 +275,7 @@ export class PdfService {
       type: isDevis ? 'Devis' : 'Facture',
       isDevis,
       isEtranger,
-      devise,
+      devise: 'TND',
       docSub: interventionTitle,
       interventionTitle,
       actePrincipal: interventionTitle,
@@ -368,45 +293,51 @@ export class PdfService {
       dureeTotaleSejour,
       modeReglement: facture.modeReglement || 'Virement bancaire / Espèces',
 
-      // Les 12 prestations formatées pour les templates
+      // Les 12 prestations médicales (Formatées en TND)
       nuitsClinique,
-      m_consultation: fmt(p_consultation),
-      m_bilan: fmt(p_bilan),
-      m_honoraires: fmt(p_honoraires),
-      m_anesthesie: fmt(p_anesthesie),
-      m_bloc: fmt(p_bloc),
-      m_sejour_clinique: fmt(p_sejour_clinique),
-      m_soins: fmt(p_soins),
-      m_medicaments: fmt(p_medicaments),
-      m_contention: fmt(p_contention),
-      m_drainage: fmt(p_drainage),
-      m_accompagnateur: fmt(p_accompagnateur),
-      m_controle: fmt(p_controle),
-      sousTotalPrestations: fmt(calculatedSousTotalPrestations),
+      m_consultation: formatTND(p_consultation),
+      m_bilan: formatTND(p_bilan),
+      m_honoraires: formatTND(p_honoraires),
+      m_anesthesie: formatTND(p_anesthesie),
+      m_bloc: formatTND(p_bloc),
+      m_sejour_clinique: formatTND(p_sejour_clinique),
+      m_soins: formatTND(p_soins),
+      m_medicaments: formatTND(p_medicaments),
+      m_contention: formatTND(p_contention),
+      m_drainage: formatTND(p_drainage),
+      m_accompagnateur: formatTND(p_accompagnateur),
+      m_controle: formatTND(p_controle),
+      sousTotalPrestations: formatTND(calculatedSousTotalPrestations),
 
       // Hôtel
       nomHotel,
       nuitsHotel,
-      m_hotel: fmt(montantHotel),
+      m_hotel: formatTND(montantHotel),
       nuitsAccompagnateurHotel: nuitsAccompagnateurHotel || '0',
-      m_accompagnateur_hotel: fmt(montantAccompagnateurHotel),
-      sousTotalHotel: fmt(sousTotalHotel),
+      m_accompagnateur_hotel: formatTND(montantAccompagnateurHotel),
+      sousTotalHotel: formatTND(sousTotalHotel),
 
       // Transferts
-      m_accueil: fmt(m_accueil_val),
-      m_trans_aero_hotel: fmt(m_trans_aero_hotel_val),
-      m_trans_hotel_cli: fmt(m_trans_hotel_cli_val),
-      m_trans_cli_hotel: fmt(m_trans_cli_hotel_val),
-      m_trans_hotel_aero: fmt(m_trans_hotel_aero_val),
-      m_assistance: fmt(m_assistance_val),
-      sousTotalTransferts: fmt(sousTotalTransferts),
+      m_accueil: formatTND(m_accueil_val),
+      m_trans_aero_hotel: formatTND(m_trans_aero_hotel_val),
+      m_trans_hotel_cli: formatTND(m_trans_hotel_cli_val),
+      m_trans_cli_hotel: formatTND(m_trans_cli_hotel_val),
+      m_trans_hotel_aero: formatTND(m_trans_hotel_aero_val),
+      m_assistance: formatTND(m_assistance_val),
+      sousTotalTransferts: formatTND(sousTotalTransferts),
 
-      // Totaux
-      totalSejour: fmt(totalGeneral),
-      totalFacture: fmt(totalGeneral),
-      montantRegle: fmt(acompte),
-      netAPayer: fmt(soldeRestant),
-      montantEnLettres: numberToFrenchWords(totalGeneral),
+      // --- TOTAUX & DÉVISE CONVERTIE POUR LES TEMPLATES ---
+      totalSejour: formatTND(totalGeneralTND),
+      totalFacture: formatTND(totalGeneralTND),
+      
+      // Variables spécifiques au modèle Étranger (EUR)
+      tauxEUR: tauxEUR.toFixed(2),
+      totalEUR: formatEUR(totalGeneralEUR),
+      totalSejourEUR: formatEUR(totalGeneralEUR),
+
+      montantRegle: formatTND(acompte),
+      netAPayer: formatTND(soldeRestantTND),
+      montantEnLettres: numberToFrenchWords(totalGeneralTND),
 
       // Objet patient complet
       patient: {
