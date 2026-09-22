@@ -467,39 +467,49 @@ export async function createDocumentConversation(
     sousTotalTransferts = transferts.reduce((sum, t) => sum + t.montant, 0);
   }
 
-  // --- ÉTAPE 5 : Acompte déjà réglé & Net à payer ---
-  const totalSejour = isEtranger
-    ? totalPrestations + montantHotel + montantAccompagnateurHotel + sousTotalTransferts
-    : totalPrestations;
+  // --- ÉTAPE 5 : Calculs des Totaux & Conversions ---
 
-  const totalSejourEUR = isEtranger ? totalSejour : (tauxEUR > 0 ? totalSejour / tauxEUR : 0);
+  // 1. Somme des prestations saisies en TND
+  const totalPrestationsTND = prestations.reduce((sum, p) => sum + p.quantite * p.prixUnitaire, 0);
+
+  // 2. Somme hôtel et transferts (saisis directement en TND ou convertis en TND)
+  // Si l'hôtel et transferts sont saisis en EUR pour l'étranger, on les convertit en TND pour harmoniser avec la BDD
+  const montantHotelTND = isEtranger ? (montantHotel + montantAccompagnateurHotel) * tauxEUR : 0;
+  const sousTotalTransfertsTND = isEtranger ? sousTotalTransferts * tauxEUR : 0;
+
+  // 3. Totaux globaux en TND
+  const totalSejourTND = totalPrestationsTND + montantHotelTND + sousTotalTransfertsTND;
+
+  // 4. Totaux globaux convertis en EUR
+  const totalSejourEUR = tauxEUR > 0 ? totalSejourTND / tauxEUR : 0;
 
   let acompte = 0;
   if (documentType === 'FACTURE') {
     await ctx.reply(
       `💰 <b>MONTANT DÉJÀ RÉGLÉ & NET À PAYER</b>\n\n` +
-      `• Montant total de la facture : <b>${fmt(totalSejour)} ${devise}</b>\n\n` +
-      `Indiquez le <b>Montant déjà réglé</b> par la patiente (en ${devise}, tapez <code>0</code> si aucun règlement préliminaire) :`,
+      `• Montant total : <b>${formatTND(totalSejourTND)} TND</b> (${formatEUR(totalSejourEUR)} €)\n\n` +
+      `Indiquez le <b>Montant déjà réglé</b> par la patiente (en TND, tapez <code>0</code> si aucun) :`,
       { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } }
     );
     const acompteMsg = await conversation.waitFor(':text');
     acompte = Math.max(0, parseFloat(acompteMsg.message?.text?.replace(',', '.') || '0') || 0);
   }
 
-  const netAPayer = Math.max(0, totalSejour - acompte);
+  const netAPayerTND = Math.max(0, totalSejourTND - acompte);
 
-  // Charges internes pour calcul de la marge nette
+  // Charges internes pour calcul de la marge nette (en TND)
   const charges: Array<{ categorie: CategorieCharge; montant: number; description: string }> = [
     { categorie: 'Bloc', montant: m_bloc, description: 'Frais de bloc opératoire' },
     { categorie: 'Clinique', montant: m_sejour_clinique, description: 'Séjour clinique' },
     { categorie: 'Chirurgie', montant: Math.round(m_honoraires * 0.6), description: 'Rémunération équipe médicale' },
   ];
   if (isEtranger) {
-    charges.push({ categorie: 'Hôtel', montant: montantHotel, description: 'Frais hôtel partenaire 5★' });
-    charges.push({ categorie: 'Transfert', montant: sousTotalTransferts, description: 'Service chauffeur privé VIP' });
+    charges.push({ categorie: 'Hôtel', montant: montantHotelTND, description: 'Frais hôtel partenaire 5★' });
+    charges.push({ categorie: 'Transfert', montant: sousTotalTransfertsTND, description: 'Service chauffeur privé VIP' });
   }
-  const totalCharges = charges.reduce((sum, c) => sum + c.montant, 0);
-  const margeNette = Math.round((totalSejour - totalCharges) * 1000) / 1000;
+  const totalChargesTND = charges.reduce((sum, c) => sum + c.montant, 0);
+  const margeNetteTND = totalSejourTND - totalChargesTND;
+  const margeNetteEUR = tauxEUR > 0 ? margeNetteTND / tauxEUR : 0;
 
   // --- ÉTAPE 6 : CONFIRMATION & GÉNÉRATION PDF ---
   const templateNom = isEtranger
@@ -525,13 +535,13 @@ export async function createDocumentConversation(
       : `• <b>Date facture</b> : ${dateFacture} | <b>Intervention le</b> : ${dateIntervention}\n` +
         `• <b>Passeport / CIN</b> : Chiffré AES-256 (<code>${passeport}</code>)\n` +
         `• <b>Zones traitées</b> : ${zonesTraitees}\n`) +
-    `• <b>Prestations médicales (12 lignes)</b> : ${fmt(totalPrestations)} ${devise}\n` +
-    (isEtranger ? `• <b>Hôtel 5★</b> : ${nomHotel} (${nuitsHotel} - ${fmt(montantHotel + montantAccompagnateurHotel)} EUR)\n` : '') +
-    (isEtranger ? `• <b>Transferts VIP</b> : Inclus (${fmt(sousTotalTransferts)} EUR)\n` : '') +
-    `• <b>Total de la pièce</b> : <b>${fmt(totalSejour)} ${devise}</b>\n` +
+    `• <b>Prestations médicales</b> : ${formatTND(totalPrestationsTND)} TND\n` +
+    (isEtranger ? `• <b>Hôtel 5★</b> : ${nomHotel} (${nuitsHotel} - ${formatEUR(montantHotel + montantAccompagnateurHotel)} €)\n` : '') +
+    (isEtranger ? `• <b>Transferts VIP</b> : Inclus (${formatEUR(sousTotalTransferts)} €)\n` : '') +
+    `• <b>Total Général</b> : <b>${formatTND(totalSejourTND)} TND</b> ${isEtranger ? `(<b>${formatEUR(totalSejourEUR)} €</b>)` : ''}\n` +
     (isEtranger ? `• <b>Taux appliqué</b> : 1 EUR = ${tauxEUR.toFixed(2)} TND\n` : '') +
-    (documentType === 'FACTURE' ? `• <b>Déjà réglé</b> : ${fmt(acompte)} ${devise} | <b>Net à payer</b> : <b>${fmt(netAPayer)} ${devise}</b>\n` : '') +
-    `• <b>Marge Nette estimée</b> : 💎 <b>${fmt(margeNette)} ${devise}</b>\n` +
+    (documentType === 'FACTURE' ? `• <b>Déjà réglé</b> : ${formatTND(acompte)} TND | <b>Net à payer</b> : <b>${formatTND(netAPayerTND)} TND</b>\n` : '') +
+    `• <b>Marge Nette estimée</b> : 💎 <b>${formatTND(margeNetteTND)} TND</b> (${formatEUR(margeNetteEUR)} €)\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `Générer le PDF haute définition prêt à l'impression ?`,
     { parse_mode: 'HTML', reply_markup: confirmKeyboard }
@@ -578,36 +588,35 @@ export async function createDocumentConversation(
         numeroFacture: customNumeroFacture || undefined,
       });
 
-      // 2. Préparation de l'objet contextuel pour Handlebars
       const docObject = doc.toObject ? doc.toObject() : doc;
 
-      // Force la devise et les totaux calculés exacts dans le payload pour Handlebars
+      // 2. Préparation EXPLICITE des variables transmises au template Handlebars
       const payloadPdf = {
         ...docObject,
-        devise: devise, // Explicitement 'EUR' ou 'TND'
-        tauxEUR: tauxEUR.toFixed(2),
-        totalSejourEUR: totalSejourEUR.toFixed(2),
-        // Si c'est un étranger, le total principal affiché est totalSejour en EUR
-        totalSejour: isEtranger ? totalSejour.toFixed(2) : totalSejour.toFixed(2),
+        devise: 'TND',                             // Affiché dans les tableaux
+        totalSejour: totalSejourTND.toFixed(2),     // Champ principal "TOTAL DU SÉJOUR" (ex: 9011.12 TND)
+        totalSejourEUR: totalSejourEUR.toFixed(2),  // Champ secondaire "TOTAL ESTIMÉ EN EUR" (ex: 2634.83 €)
+        totalEUR: totalSejourEUR.toFixed(2),        // Alias de sécurité pour Handlebars {{totalEUR}}
+        tauxEUR: tauxEUR.toFixed(2),               // Champ "Taux : 1 EUR = X TND"
       };
 
       // 3. Génération du PDF Buffer
       const buffer = await PdfService.generatePdf(payloadPdf, patient);
 
-      // 4. Retourne des types primitifs sérialisables
       return {
         bufferBase64: buffer.toString('base64'),
         numeroFacture: doc.numeroFacture,
-        totalHT: doc.totalHT,
-        acompte: doc.acompte,
-        soldeRestant: doc.soldeRestant,
-        margeNette: doc.margeNette,
-        totalSejourEUR,
+        totalTND: totalSejourTND,
+        totalEUR: totalSejourEUR,
+        acompte,
+        soldeRestantTND: netAPayerTND,
+        margeNetteTND,
+        margeNetteEUR,
         tauxEUR,
       };
     });
 
-    // Reconstitution du Buffer depuis le string Base64
+    // Reconstitution du Buffer
     const pdfBuffer = Buffer.from(pdfData.bufferBase64, 'base64');
     const fileName = `${pdfData.numeroFacture}_${nomPrenom.replace(/\s+/g, '_')}.pdf`;
 
@@ -616,14 +625,14 @@ export async function createDocumentConversation(
         `✨ <b>${documentType} OFFICIEL — PERLA BODY SCULPT</b>\n\n` +
         `• <b>Numéro</b> : <code>${pdfData.numeroFacture}</code>\n` +
         `• <b>Patiente</b> : ${nomPrenom}\n` +
-        `• <b>Modèle appliqué</b> : ${isEtranger ? 'Étranger (EUR)' : 'Tunisien (TND)'}\n` +
-        `• <b>Montant Total</b> : <b>${fmt(pdfData.totalHT)} ${devise}</b>\n` +
-        (isEtranger ? `• <b>Equivalent EUR</b> : <b>${formatEUR(pdfData.totalSejourEUR)} €</b> (Taux: ${pdfData.tauxEUR.toFixed(2)})\n` : '') +
+        `• <b>Modèle appliqué</b> : ${isEtranger ? 'Étranger (EUR / TND)' : 'Tunisien (TND)'}\n` +
+        `• <b>Montant Total (TND)</b> : <b>${formatTND(pdfData.totalTND)} TND</b>\n` +
+        (isEtranger ? `• <b>Équivalent EUR</b> : <b>${formatEUR(pdfData.totalEUR)} €</b> (Taux: ${pdfData.tauxEUR.toFixed(2)})\n` : '') +
         (documentType === 'FACTURE'
-          ? `• <b>Acompte réglé</b> : ${fmt(pdfData.acompte)} ${devise}\n` +
-            `• <b>Net à payer</b> : <b>${fmt(pdfData.soldeRestant)} ${devise}</b>\n`
+          ? `• <b>Acompte réglé</b> : ${formatTND(pdfData.acompte)} TND\n` +
+            `• <b>Net à payer</b> : <b>${formatTND(pdfData.soldeRestantTND)} TND</b>\n`
           : '') +
-        `• <b>Marge Nette</b> : 🟢 ${fmt(pdfData.margeNette)} ${devise}\n\n` +
+        `• <b>Marge Nette</b> : 🟢 <b>${formatTND(pdfData.margeNetteTND)} TND</b> (${formatEUR(pdfData.margeNetteEUR)} €)\n\n` +
         `<i>Document prêt à être imprimé ou transmis à la patiente.</i>`,
       parse_mode: 'HTML',
     });
