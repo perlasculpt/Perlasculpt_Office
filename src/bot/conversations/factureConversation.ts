@@ -288,49 +288,52 @@ export async function createDocumentConversation(
   let paysResidence = isEtranger ? 'France' : 'Tunisie';
 
   // --- ÉTAPE 3 : PRESTATIONS MÉDICALES ---
+  // Pour la saisie, on demande toujours en TND (Dinars Tunisiens)
+  const deviseSaisie = 'TND';
+
   await ctx.reply(
-    `📋 <b>1. PRESTATIONS MÉDICALES (En ${devise})</b>\n\n` +
-    `Veuillez saisir les montants pour chacune des 12 prestations officielles :`,
+    `📋 <b>1. PRESTATIONS MÉDICALES (En ${deviseSaisie})</b>\n\n` +
+    `Veuillez saisir les montants en TND pour chacune des 12 prestations officielles :`,
     { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } }
   );
 
-  // Valeurs par défaut
-  let m_consultation = isEtranger ? 50 : 100;
+  // Valeurs par défaut toujours exprimées en TND
+  let m_consultation = 100;
   let m_bilan = 150;
-  let m_honoraires = isEtranger ? 2100 : 2200;
-  let m_anesthesie = isEtranger ? 350 : 400;
-  let m_bloc = isEtranger ? 550 : 600;
+  let m_honoraires = 6000;
+  let m_anesthesie = 800;
+  let m_bloc = 1200;
   let nuitsClinique = 1;
-  let m_sejour_clinique = isEtranger ? 200 : 350;
-  let m_soins = 150;
-  let m_medicaments = 100;
-  let m_contention = 120;
-  let m_drainage = 150;
+  let m_sejour_clinique = 700;
+  let m_soins = 200;
+  let m_medicaments = 150;
+  let m_contention = 250;
+  let m_drainage = 200;
   let m_accompagnateur = 0;
   let m_controle = 0;
 
-  // Saisie directe de chaque ligne
-  await ctx.reply(`▫️ 1. <b>Consultation préopératoire</b> (montant en ${devise}, défaut: ${m_consultation}) :`, { parse_mode: 'HTML' });
+  // Saisie directe de chaque ligne en TND
+  await ctx.reply(`▫️ 1. <b>Consultation préopératoire</b> (montant en ${deviseSaisie}, défaut: ${m_consultation}) :`, { parse_mode: 'HTML' });
   const cMsg = await conversation.waitFor(':text');
   const cVal = parseFloat(cMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(cVal)) m_consultation = cVal;
 
-  await ctx.reply(`▫️ 2. <b>Bilan / examens préopératoires</b> (montant en ${devise}, défaut: ${m_bilan}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 2. <b>Bilan / examens préopératoires</b> (montant en ${deviseSaisie}, défaut: ${m_bilan}) :`, { parse_mode: 'HTML' });
   const bMsg = await conversation.waitFor(':text');
   const bVal = parseFloat(bMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(bVal)) m_bilan = bVal;
 
-  await ctx.reply(`▫️ 3. <b>Honoraires chirurgicaux</b> (montant en ${devise}, défaut: ${m_honoraires}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 3. <b>Honoraires chirurgicaux</b> (montant en ${deviseSaisie}, défaut: ${m_honoraires}) :`, { parse_mode: 'HTML' });
   const hMsg = await conversation.waitFor(':text');
   const hVal = parseFloat(hMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(hVal)) m_honoraires = hVal;
 
-  await ctx.reply(`▫️ 4. <b>Anesthésie</b> (montant en ${devise}, défaut: ${m_anesthesie}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 4. <b>Anesthésie</b> (montant en ${deviseSaisie}, défaut: ${m_anesthesie}) :`, { parse_mode: 'HTML' });
   const aMsg = await conversation.waitFor(':text');
   const aVal = parseFloat(aMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(aVal)) m_anesthesie = aVal;
 
-  await ctx.reply(`▫️ 5. <b>Frais de bloc opératoire</b> (montant en ${devise}, défaut: ${m_bloc}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 5. <b>Frais de bloc opératoire</b> (montant en ${deviseSaisie}, défaut: ${m_bloc}) :`, { parse_mode: 'HTML' });
   const blMsg = await conversation.waitFor(':text');
   const blVal = parseFloat(blMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(blVal)) m_bloc = blVal;
@@ -340,55 +343,63 @@ export async function createDocumentConversation(
   const qClVal = parseInt(qClMsg.message?.text?.trim() || '1', 10);
   if (!isNaN(qClVal) && qClVal > 0) nuitsClinique = qClVal;
 
-  await ctx.reply(`▫️ 6. <b>Séjour en clinique — Montant total</b> (en ${devise}, défaut: ${m_sejour_clinique * nuitsClinique}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 6. <b>Séjour en clinique — Montant total</b> (en ${deviseSaisie}, défaut: ${m_sejour_clinique * nuitsClinique}) :`, { parse_mode: 'HTML' });
   const mClMsg = await conversation.waitFor(':text');
   const mClVal = parseFloat(mClMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(mClVal)) m_sejour_clinique = mClVal;
 
-  await ctx.reply(`▫️ 7. <b>Soins et surveillance postopératoires</b> (montant en ${devise}, défaut: ${m_soins}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 7. <b>Soins et surveillance postopératoires</b> (montant en ${deviseSaisie}, défaut: ${m_soins}) :`, { parse_mode: 'HTML' });
   const sMsg = await conversation.waitFor(':text');
   const sVal = parseFloat(sMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(sVal)) m_soins = sVal;
 
-  await ctx.reply(`▫️ 8. <b>Médicaments et soins postopératoires</b> (montant en ${devise}, défaut: ${m_medicaments}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 8. <b>Médicaments et soins postopératoires</b> (montant en ${deviseSaisie}, défaut: ${m_medicaments}) :`, { parse_mode: 'HTML' });
   const medMsg = await conversation.waitFor(':text');
   const medVal = parseFloat(medMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(medVal)) m_medicaments = medVal;
 
-  await ctx.reply(`▫️ 9. <b>Vêtement de contention</b> (montant en ${devise}, défaut: ${m_contention}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 9. <b>Vêtement de contention</b> (montant en ${deviseSaisie}, défaut: ${m_contention}) :`, { parse_mode: 'HTML' });
   const conMsg = await conversation.waitFor(':text');
   const conVal = parseFloat(conMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(conVal)) m_contention = conVal;
 
-  await ctx.reply(`▫️ 10. <b>Drainage</b> (montant en ${devise}, défaut: ${m_drainage}) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 10. <b>Drainage</b> (montant en ${deviseSaisie}, défaut: ${m_drainage}) :`, { parse_mode: 'HTML' });
   const drMsg = await conversation.waitFor(':text');
   const drVal = parseFloat(drMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(drVal)) m_drainage = drVal;
 
-  await ctx.reply(`▫️ 11. <b>Supplément accompagnateur</b> (montant en ${devise}, tapez 0 si aucun) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 11. <b>Supplément accompagnateur</b> (montant en ${deviseSaisie}, tapez 0 si aucun) :`, { parse_mode: 'HTML' });
   const accMsg = await conversation.waitFor(':text');
   const accVal = parseFloat(accMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(accVal)) m_accompagnateur = accVal;
 
-  await ctx.reply(`▫️ 12. <b>Contrôle postopératoire</b> (montant en ${devise}, tapez 0 si inclus) :`, { parse_mode: 'HTML' });
+  await ctx.reply(`▫️ 12. <b>Contrôle postopératoire</b> (montant en ${deviseSaisie}, tapez 0 si inclus) :`, { parse_mode: 'HTML' });
   const ctrMsg = await conversation.waitFor(':text');
   const ctrVal = parseFloat(ctrMsg.message?.text?.replace(',', '.') || '');
   if (!isNaN(ctrVal)) m_controle = ctrVal;
 
-  // Construction du tableau des prestations pour la base de données
+  // Fonction Helper pour convertir un montant TND en EUR si la patiente est étrangère
+  const toFinalDevise = (amountInTND: number) => {
+    if (isEtranger && tauxEUR > 0) {
+      return Math.round((amountInTND / tauxEUR) * 100) / 100;
+    }
+    return amountInTND;
+  };
+
+  // Construction du tableau des prestations converties en EUR si patiente étrangère
   const prestations = [
-    { designation: 'Consultation préopératoire', quantite: 1, prixUnitaire: m_consultation },
-    { designation: 'Bilan / examens préopératoires', quantite: 1, prixUnitaire: m_bilan },
-    { designation: 'Honoraires chirurgicaux', quantite: 1, prixUnitaire: m_honoraires },
-    { designation: 'Anesthésie', quantite: 1, prixUnitaire: m_anesthesie },
-    { designation: 'Frais de bloc opératoire', quantite: 1, prixUnitaire: m_bloc },
-    { designation: `Séjour en clinique – ${nuitsClinique} nuit(s)`, quantite: nuitsClinique, prixUnitaire: nuitsClinique > 0 ? m_sejour_clinique / nuitsClinique : m_sejour_clinique },
-    { designation: 'Soins et surveillance postopératoires', quantite: 1, prixUnitaire: m_soins },
-    { designation: 'Médicaments et soins postopératoires', quantite: 1, prixUnitaire: m_medicaments },
-    { designation: 'Vêtement de contention', quantite: 1, prixUnitaire: m_contention },
-    { designation: 'Drainage', quantite: 1, prixUnitaire: m_drainage },
-    { designation: 'Supp. accompagnateur', quantite: 1, prixUnitaire: m_accompagnateur },
-    { designation: 'Contrôle postopératoire', quantite: 1, prixUnitaire: m_controle },
+    { designation: 'Consultation préopératoire', quantite: 1, prixUnitaire: toFinalDevise(m_consultation) },
+    { designation: 'Bilan / examens préopératoires', quantite: 1, prixUnitaire: toFinalDevise(m_bilan) },
+    { designation: 'Honoraires chirurgicaux', quantite: 1, prixUnitaire: toFinalDevise(m_honoraires) },
+    { designation: 'Anesthésie', quantite: 1, prixUnitaire: toFinalDevise(m_anesthesie) },
+    { designation: 'Frais de bloc opératoire', quantite: 1, prixUnitaire: toFinalDevise(m_bloc) },
+    { designation: `Séjour en clinique – ${nuitsClinique} nuit(s)`, quantite: nuitsClinique, prixUnitaire: toFinalDevise(nuitsClinique > 0 ? m_sejour_clinique / nuitsClinique : m_sejour_clinique) },
+    { designation: 'Soins et surveillance postopératoires', quantite: 1, prixUnitaire: toFinalDevise(m_soins) },
+    { designation: 'Médicaments et soins postopératoires', quantite: 1, prixUnitaire: toFinalDevise(m_medicaments) },
+    { designation: 'Vêtement de contention', quantite: 1, prixUnitaire: toFinalDevise(m_contention) },
+    { designation: 'Drainage', quantite: 1, prixUnitaire: toFinalDevise(m_drainage) },
+    { designation: 'Supp. accompagnateur', quantite: 1, prixUnitaire: toFinalDevise(m_accompagnateur) },
+    { designation: 'Contrôle postopératoire', quantite: 1, prixUnitaire: toFinalDevise(m_controle) },
   ];
 
   const totalPrestations = prestations.reduce((sum, p) => sum + p.quantite * p.prixUnitaire, 0);
@@ -567,18 +578,23 @@ export async function createDocumentConversation(
         numeroFacture: customNumeroFacture || undefined,
       });
 
-      // 2. Génération du PDF Buffer avec Puppeteer en passant le tauxEUR et totalSejourEUR
+      // 2. Préparation de l'objet contextuel pour Handlebars
       const docObject = doc.toObject ? doc.toObject() : doc;
-      const buffer = await PdfService.generatePdf(
-        {
-          ...docObject,
-          tauxEUR: tauxEUR.toFixed(2),
-          totalSejourEUR: totalSejourEUR.toFixed(2),
-        },
-        patient
-      );
 
-      // 3. Retourne des types primitifs / sérialisables compatibles avec structuredClone
+      // Force la devise et les totaux calculés exacts dans le payload pour Handlebars
+      const payloadPdf = {
+        ...docObject,
+        devise: devise, // Explicitement 'EUR' ou 'TND'
+        tauxEUR: tauxEUR.toFixed(2),
+        totalSejourEUR: totalSejourEUR.toFixed(2),
+        // Si c'est un étranger, le total principal affiché est totalSejour en EUR
+        totalSejour: isEtranger ? totalSejour.toFixed(2) : totalSejour.toFixed(2),
+      };
+
+      // 3. Génération du PDF Buffer
+      const buffer = await PdfService.generatePdf(payloadPdf, patient);
+
+      // 4. Retourne des types primitifs sérialisables
       return {
         bufferBase64: buffer.toString('base64'),
         numeroFacture: doc.numeroFacture,
