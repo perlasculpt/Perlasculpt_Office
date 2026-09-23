@@ -332,14 +332,14 @@ export async function createDocumentConversation(
       .oneTime();
 
     await ctx.reply(
-      `🏨 <b>2. HÉBERGEMENT HÔTELIER PARTENAIRE 5★ (En TND)</b>\n\n` +
+      `🏨 <b>2. HÉBERGEMENT HÔTELIER PARTENAIRE  (En TND)</b>\n\n` +
       `Choisissez l'option d'hébergement :`,
       { parse_mode: 'HTML', reply_markup: hotelPromptKeyboard }
     );
     const hotelChoice = await conversation.waitFor(':text');
 
     if (hotelChoice.message?.text?.includes('Personnaliser')) {
-      await ctx.reply(`▫️ Nom de l'hôtel (ex: <code>Hôtel The Residence Tunis 5★</code>) :`, {
+      await ctx.reply(`▫️ Nom de l'hôtel (ex: <code>Hôtel The Residence Tunis </code>) :`, {
         parse_mode: 'HTML',
         reply_markup: { remove_keyboard: true },
       });
@@ -452,7 +452,7 @@ export async function createDocumentConversation(
     { categorie: 'Chirurgie', montant: Math.round(m_honoraires * 0.6), description: 'Rémunération équipe médicale' },
   ];
   if (isEtranger) {
-    charges.push({ categorie: 'Hôtel', montant: montantHotelTND, description: 'Frais hôtel partenaire 5★' });
+    charges.push({ categorie: 'Hôtel', montant: montantHotelTND, description: 'Frais hôtel partenaire ' });
     charges.push({ categorie: 'Transfert', montant: sousTotalTransfertsTND, description: 'Service chauffeur privé VIP' });
   }
   const totalChargesTND = charges.reduce((sum, c) => sum + c.montant, 0);
