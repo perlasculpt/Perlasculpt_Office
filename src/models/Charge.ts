@@ -1,11 +1,10 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { CategorieCharge } from './Facture.js';
 
 export interface ICharge extends Document {
-  categorie: CategorieCharge;
+  typeCharge: 'DIRECTE' | 'FIXE';
+  categorie: string; // 👈 Lazem tkon string 3adi hna
   montant: number;
   description: string;
-  factureId?: Types.ObjectId;
   date: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -13,10 +12,16 @@ export interface ICharge extends Document {
 
 const ChargeSchema: Schema<ICharge> = new Schema(
   {
-    categorie: {
+    typeCharge: {
       type: String,
+      enum: ['DIRECTE', 'FIXE'],
       required: true,
-      enum: ['Clinique', 'Hôtel', 'Transfert', 'Bloc', 'Chirurgie', 'Soins', 'Autre'],
+      default: 'FIXE',
+      index: true,
+    },
+    categorie: {
+      type: String, // 👈 Lazem Schema.Types.String
+      required: true,
       index: true,
     },
     montant: {
@@ -28,11 +33,6 @@ const ChargeSchema: Schema<ICharge> = new Schema(
       type: String,
       required: true,
       trim: true,
-    },
-    factureId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Facture',
-      index: true,
     },
     date: {
       type: Date,

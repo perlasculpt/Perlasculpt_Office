@@ -4,7 +4,17 @@ import { CryptoService } from './cryptoService.js';
 import { isDbConnected } from '../config/db.js';
 import { formatTND } from './pdfService.js';
 
-// Stockage mémoire de secours (fallback en cas d'absence de serveur MongoDB externe)
+// ----------------------------------------------------
+// Interfaces & Memory Fallback mta3 les Charges Fixes
+// ----------------------------------------------------
+export interface MemoryExpense {
+  _id: string;
+  description: string;
+  montant: number; // Toujours en TND
+  categorie: 'LOYER' | 'ELECTRICITE' | 'CLINIQUE' | 'SPONSOR' | 'AUTRE';
+  date: Date;
+}
+
 export interface MemoryPatient {
   _id: string;
   nomPrenom: string;
@@ -54,7 +64,24 @@ export interface MemoryFacture {
   createdAt: Date;
 }
 
-// Données en mémoire initialisées avec les exemples Perla Body Sculpt
+// Données en mémoire (Fallback)
+let memoryExpenses: MemoryExpense[] = [
+  {
+    _id: 'mem_exp1',
+    description: 'Sponsor Instagram & Facebook',
+    montant: 450,
+    categorie: 'SPONSOR',
+    date: new Date(),
+  },
+  {
+    _id: 'mem_exp2',
+    description: 'Loyer Cabinet / Clinique',
+    montant: 1200,
+    categorie: 'LOYER',
+    date: new Date(),
+  }
+];
+
 let memoryPatients: MemoryPatient[] = [
   {
     _id: 'mem_p1',
@@ -136,8 +163,56 @@ let memoryFactures: MemoryFacture[] = [
 ];
 
 export class FinanceService {
+
   /**
-   * Génère le prochain numéro séquentiel (ex: FAC-2026-002 ou DEV-2026-002)
+   * ➕ Enregistrer une nouvelle charge / dépense fixe (Kre, STEG, Sponsors, Clinique...)
+   */
+  public static async addExpense(params: {
+    description: string;
+    montant: number;
+    categorie: 'LOYER' | 'ELECTRICITE' | 'CLINIQUE' | 'SPONSOR' | 'AUTRE';
+  }): Promise<any> {
+    if (isDbConnected()) {
+      // Intégration MongoDB si tu as un Schema Expense
+      // const exp = await Expense.create({ ...params, date: new Date() });
+      // return exp;
+    }
+
+    const newExpense: MemoryExpense = {
+      _id: `mem_exp_${Date.now()}`,
+      description: params.description,
+      montant: params.montant,
+      categorie: params.categorie,
+      date: new Date(),
+    };
+    memoryExpenses.push(newExpense);
+    return newExpense;
+  }
+
+  /**
+   * 📉 Calculer le total des charges fixes pour le mois donné
+   */
+  public static async getMonthlyExpensesTotal(month?: number, year?: number): Promise<number> {
+    const now = new Date();
+    const targetMonth = month !== undefined ? month : now.getMonth();
+    const targetYear = year !== undefined ? year : now.getFullYear();
+
+    if (isDbConnected()) {
+      // Requete MongoDB
+      // const docs = await Expense.find({ ... });
+      // return docs.reduce((sum, e) => sum + e.montant, 0);
+    }
+
+    const filtered = memoryExpenses.filter(e => {
+      const d = new Date(e.date);
+      return d.getMonth() === targetMonth && d.getFullYear() === targetYear;
+    });
+
+    return filtered.reduce((sum, e) => sum + (e.montant || 0), 0);
+  }
+
+  /**
+   * Génère le prochain numéro séquentiel
    */
   public static async generateNextNumero(type: 'DEVIS' | 'FACTURE'): Promise<string> {
     const prefix = type === 'DEVIS' ? 'DEV' : 'FAC';
@@ -189,7 +264,6 @@ export class FinanceService {
     const passeportEncrypted = CryptoService.encrypt(data.passeport);
 
     if (isDbConnected()) {
-      // Chercher par nom ou passeport
       let patient = await Patient.findOne({
         nomPrenom: new RegExp(`^${data.nomPrenom.trim()}$`, 'i'),
       });
@@ -285,7 +359,6 @@ export class FinanceService {
     const clientType = params.clientType || (isEtranger ? 'ETRANGER' : 'TUNISIEN');
     const devise = params.devise || (isEtranger ? 'EUR' : 'TND');
 
-    // Calculs
     const totalPrestations = params.prestations.reduce(
       (acc, p) => acc + (p.quantite || 1) * (p.prixUnitaire || 0),
       0
@@ -392,7 +465,7 @@ export class FinanceService {
   }
 
   /**
-   * Commande /stats_mois : calcule CA, Total Charges, Marge Nette pour le mois en cours
+   * 📊 Commande /stats_mois : calcule CA, Total Charges Directes + Charges Fixes, Marge Nette pour le mois en cours
    */
   public static async getMonthlyStats(month?: number, year?: number) {
     const now = new Date();
@@ -406,7 +479,7 @@ export class FinanceService {
       const endDate = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59);
 
       facturesList = await Facture.find({
-        createdAt: { $gte: startDate, $lte: endDate },
+        createdAt: { $gte: startDate,$lte: endDate },
       }).lean();
     } else {
       facturesList = memoryFactures.filter(f => {
@@ -415,21 +488,31 @@ export class FinanceService {
       });
     }
 
-    // Statistiques séparées Factures (CA réel) et Devis (potentiel)
     const facturesOnly = facturesList.filter(f => f.type === 'FACTURE');
     const devisOnly = facturesList.filter(f => f.type === 'DEVIS');
 
     const totalCA = facturesOnly.reduce((sum, f) => sum + (f.totalHT || 0), 0);
-    const totalChargesFactures = facturesOnly.reduce((sum, f) => {
+    
+    // 1. Charges directes liées aux factures (Bloc, hôtel, chirurgie...)
+    const totalChargesDirectes = facturesOnly.reduce((sum, f) => {
       const chSum = (f.charges || []).reduce((cSum: number, c: any) => cSum + (c.montant || 0), 0);
       return sum + chSum;
     }, 0);
-    const margeNetteFactures = totalCA - totalChargesFactures;
+
+    // 2. Charges Fixes (Kre, Sponsors, STEG...)
+    const totalChargesFixes = await this.getMonthlyExpensesTotal(targetMonth, targetYear);
+
+    // 3. Total des Charges Globale
+    const totalChargesGlobales = totalChargesDirectes + totalChargesFixes;
+
+    // 4. Gain Net Total (Résultat Net réel)
+    const gainNetTotal = totalCA - totalChargesGlobales;
+
     const totalAcomptes = facturesOnly.reduce((sum, f) => sum + (f.acompte || 0), 0);
     const totalSoldesEnAttente = facturesOnly.reduce((sum, f) => sum + (f.soldeRestant || 0), 0);
 
     const devisVolume = devisOnly.reduce((sum, f) => sum + (f.totalHT || 0), 0);
-    const tauxMarge = totalCA > 0 ? ((margeNetteFactures / totalCA) * 100).toFixed(1) : '0.0';
+    const tauxMarge = totalCA > 0 ? ((gainNetTotal / totalCA) * 100).toFixed(1) : '0.0';
 
     return {
       mois: new Date(targetYear, targetMonth, 1).toLocaleDateString('fr-FR', {
@@ -440,10 +523,14 @@ export class FinanceService {
       nombreDevis: devisOnly.length,
       totalCA,
       totalCAFormatted: formatTND(totalCA),
-      totalCharges: totalChargesFactures,
-      totalChargesFormatted: formatTND(totalChargesFactures),
-      margeNette: margeNetteFactures,
-      margeNetteFormatted: formatTND(margeNetteFactures),
+      totalChargesDirectes,
+      totalChargesDirectesFormatted: formatTND(totalChargesDirectes),
+      totalChargesFixes,
+      totalChargesFixesFormatted: formatTND(totalChargesFixes),
+      totalChargesGlobales,
+      totalChargesFormatted: formatTND(totalChargesGlobales),
+      margeNette: gainNetTotal,
+      margeNetteFormatted: formatTND(gainNetTotal),
       tauxMarge: `${tauxMarge}%`,
       totalAcomptes,
       totalAcomptesFormatted: formatTND(totalAcomptes),
@@ -456,7 +543,6 @@ export class FinanceService {
 
   /**
    * Commande /historique_client [Nom/Passeport]
-   * Recherche un patient et retourne l'historique complet de ses devis et factures
    */
   public static async getClientHistory(query: string) {
     const cleanQuery = query.trim().toLowerCase();
@@ -522,7 +608,7 @@ export class FinanceService {
   }
 
   /**
-   * Commande /export_excel : export CSV conforme Excel (UTF-8 avec BOM) ou JSON
+   * Commande /export_excel
    */
   public static async exportFinancialData(format: 'csv' | 'json'): Promise<{ data: string; mimeType: string; filename: string }> {
     let allFactures: any[] = [];
@@ -567,7 +653,6 @@ export class FinanceService {
       };
     }
 
-    // Format CSV avec BOM UTF-8 (\uFEFF) pour ouverture immédiate dans Excel
     const headers = [
       'N° Pièce',
       'Type',
@@ -609,9 +694,6 @@ export class FinanceService {
     };
   }
 
-  /**
-   * Récupère tous les documents pour l'interface d'administration
-   */
   public static async getAllDocuments() {
     let factures: any[] = [];
     let patients: any[] = [];
@@ -641,9 +723,6 @@ export class FinanceService {
     });
   }
 
-  /**
-   * Récupère une facture par son ID ou numéro
-   */
   public static async getDocumentById(idOrNumber: string) {
     if (isDbConnected()) {
       let doc = await Facture.findOne({

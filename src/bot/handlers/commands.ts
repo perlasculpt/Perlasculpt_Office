@@ -1,18 +1,22 @@
-import { CommandContext, Context, InputFile, Keyboard } from 'grammy';
+import { Context, InputFile, Keyboard } from 'grammy';
 import { FinanceService } from '../../services/financeService.js';
 import { config } from '../../config/env.js';
 import { isUserPinVerified, setPinVerified, revokePinSession, SECURITY_ENABLED } from '../middlewares/authMiddleware.js';
 import { formatTND } from '../../services/pdfService.js';
 import { BotContext } from '../conversations/factureConversation.js';
+import { Charge } from '../../models/Charge.js';
+import { Facture } from '../../models/Facture.js';
 
 export const mainMenuKeyboard = new Keyboard()
   .text('📄 Créer un Devis')
   .text('📑 Créer une Facture')
   .row()
   .text('📊 Bilan du Mois')
-  .text('🔍 Chercher Patiente')
+  .text('💸 Ajouter Dépense')
   .row()
+  .text('🔍 Chercher Patiente')
   .text('📥 Export Excel')
+  .row()
   .text('ℹ️ Manuel d\'Aide')
   .resized();
 
@@ -21,7 +25,6 @@ export const mainMenuKeyboard = new Keyboard()
  */
 export async function handleStart(ctx: Context) {
   const userId = ctx.from?.id;
-  const isUnlocked = userId ? isUserPinVerified(userId) : true;
 
   const text =
     `💎 <b>PERLA BODY SCULPT — ERP FINANCIER CLINIQUE & BOT</b>\n` +
@@ -92,6 +95,73 @@ export async function handleLock(ctx: Context) {
 }
 
 /**
+ * Déclencheur de la conversation pour ajouter une Dépense / Charge
+ */
+export async function handleAddExpense(ctx: BotContext) {
+  const userId = ctx.from?.id;
+  if (userId && !isUserPinVerified(userId)) {
+    return ctx.reply(
+      `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\n` +
+      `L'enregistrement des dépenses nécessite le déverrouillage PIN.\n` +
+      `Tapez : <code>/pin ${config.telegram.adminPin || '2026'}</code> pour continuer.`,
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  await ctx.conversation.enter('addExpenseConversation');
+}
+
+/**
+ * Commande /historique_depenses : Affichage de la liste des dépenses
+ */
+export async function handleHistoriqueDepenses(ctx: Context) {
+  const userId = ctx.from?.id;
+  if (userId && !isUserPinVerified(userId)) {
+    return ctx.reply(
+      `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\nTapez : <code>/pin [code]</code>`,
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  await ctx.reply('🔍 <i>Récupération de l\'historique des dépenses...</i>', { parse_mode: 'HTML' });
+
+  try {
+    const expenses = await Charge.find()
+      .sort({ date: -1 })
+      .limit(20)
+      .lean();
+
+    if (expenses.length === 0) {
+      return ctx.reply('📑 <b>Aucune dépense enregistrée pour le moment.</b>', { parse_mode: 'HTML' });
+    }
+
+    let text =
+      `📉 <b>HISTORIQUE DES DÉPENSES & MASARIF</b>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    let total = 0;
+
+    expenses.forEach((e, idx) => {
+      const d = new Date(e.date).toLocaleDateString('fr-FR');
+      const badgeType = e.typeCharge === 'DIRECTE' ? '🔴 DIRECTE' : '🔵 FIXE';
+      text +=
+        `<b>${idx + 1}. [${e.categorie}]</b> (${badgeType}) — <code>${d}</code>\n` +
+        `• Description : ${e.description}\n` +
+        `• Montant : <b>${formatTND(e.montant)} TND</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      total += e.montant;
+    });
+
+    text += `\n💰 <b>Total des Dépenses Affichées :</b> 🔻 <b>${formatTND(total)} TND</b>`;
+
+    await ctx.reply(text, { parse_mode: 'HTML' });
+  } catch (error: any) {
+    console.error('Erreur historique_depenses:', error);
+    await ctx.reply(`⚠️ Erreur lors de la récupération : ${error.message}`);
+  }
+}
+
+/**
  * Commande /stats_mois : Tableau de bord financier du mois en cours
  */
 export async function handleStatsMois(ctx: Context) {
@@ -99,7 +169,7 @@ export async function handleStatsMois(ctx: Context) {
   if (userId && !isUserPinVerified(userId)) {
     return ctx.reply(
       `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\n` +
-      `La consultation des chiffres d'affaires et de la marge nette nécessite de déverrouiller votre session.\n` +
+      `La consultation des chiffres d'affaires et du gain net nécessite de déverrouiller votre session.\n` +
       `Tapez : <code>/pin ${config.telegram.adminPin || '2026'}</code> pour continuer.`,
       { parse_mode: 'HTML' }
     );
@@ -108,26 +178,75 @@ export async function handleStatsMois(ctx: Context) {
   await ctx.reply('📊 <i>Calcul des indicateurs financiers en cours...</i>', { parse_mode: 'HTML' });
 
   try {
-    const stats = await FinanceService.getMonthlyStats();
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // 1. Récupération des Factures (Seules les factures comptent dans la caisse)
+    const factures = await Facture.find({
+      type: 'FACTURE', // 👈 'type' au lieu de 'typeDocument'
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+    }).lean();
+
+    let totalFactureBrut = 0;
+    let totalEncaisse = 0;
+    let totalResteAPercevoir = 0;
+
+    factures.forEach((f) => {
+      const net = f.totalHT || 0; // 👈 'totalHT' au lieu de 'totalNet'
+      const acompte = f.acompte || 0; // 👈 'acompte' au lieu de 'acomptePaye'
+      totalFactureBrut += net;
+      totalEncaisse += acompte;
+      totalResteAPercevoir += Math.max(0, net - acompte);
+    });
+
+    // Pipeline Devis (Indicatif uniquement)
+    const devisCount = await Facture.countDocuments({
+      type: 'DEVIS', // 👈 'type' au lieu de 'typeDocument'
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+    });
+
+    // 2. Récupération des Dépenses (Directes + Fixes)
+    const charges = await Charge.find({
+      date: { $gte: startOfMonth,$lte: endOfMonth },
+    }).lean();
+
+    let totalChargesDirectes = 0;
+    let totalChargesFixes = 0;
+
+    charges.forEach((c) => {
+      if (c.typeCharge === 'DIRECTE') {
+        totalChargesDirectes += c.montant;
+      } else {
+        totalChargesFixes += c.montant;
+      }
+    });
+
+    const totalDepenses = totalChargesDirectes + totalChargesFixes;
+
+    // 3. Calcul du Gain Net Réel (Argent Réellement Encaissé - Total Dépenses)
+    const gainNetReel = totalEncaisse - totalDepenses;
+    const moisNom = now.toLocaleString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
 
     const text =
-      `📊 <b>BILAN FINANCIER DU MOIS — ${stats.mois.toUpperCase()}</b>\n` +
+      `📊 <b>BILAN FINANCIER DU MOIS — ${moisNom}</b>\n` +
       `Établissement : <b>${config.clinic.name}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `💰 <b>CHIFFRE D'AFFAIRES & ENCAISSEMENTS :</b>\n` +
-      `• Factures validées : <b>${stats.nombreFactures}</b>\n` +
-      `• Chiffre d'Affaires Brut : <b>${stats.totalCAFormatted} TND</b>\n` +
-      `• Acomptes encaissés : <b>${stats.totalAcomptesFormatted} TND</b>\n` +
-      `• Soldes restants à percevoir : <b>${stats.totalSoldesEnAttenteFormatted} TND</b>\n\n` +
-      `🏨 <b>CHARGES DIRECTES (Hôtel, Bloc, Transferts, Équipe) :</b>\n` +
-      `• Total des charges : 🔻 <b>${stats.totalChargesFormatted} TND</b>\n\n` +
-      `🟢 <b>RÉSULTAT NET & RENTABILITÉ :</b>\n` +
-      `• Marge Nette Globale : 💎 <b>${stats.margeNetteFormatted} TND</b>\n` +
-      `• Taux de marge nette : <b>${stats.tauxMarge}</b>\n\n` +
-      `📑 <b>PIPELINE DEVIS :</b>\n` +
-      `• Devis émis en cours : <b>${stats.nombreDevis}</b> (${stats.devisVolumeFormatted} TND)\n` +
+      `📥 <b>ENTRÉES D'ARGENT (Factures uniquement) :</b>\n` +
+      `• Factures émises : <b>${factures.length}</b>\n` +
+      `• Total Facturé (Brut) : <b>${formatTND(totalFactureBrut)} TND</b>\n` +
+      `• 💰 <b>Total Réellement Encaissé : ${formatTND(totalEncaisse)} TND</b>\n` +
+      `• Soldes restants à percevoir : <b>${formatTND(totalResteAPercevoir)} TND</b>\n\n` +
+      `📤 <b>SORTIES D'ARGENT (Dépenses) :</b>\n` +
+      `• Charges Directes (Clinique, Bloc...) : 🔻 <b>${formatTND(totalChargesDirectes)} TND</b>\n` +
+      `• Charges Fixes (Loyer, Pub Meta...) : 🔻 <b>${formatTND(totalChargesFixes)} TND</b>\n` +
+      `• 💸 <b>Total Dépenses Cumulées : 🔻 ${formatTND(totalDepenses)} TND</b>\n\n` +
+      `🟢 <b>RÉSULTAT NET & CAISSE RÉELLE :</b>\n` +
+      `• Gain Net Réel : 💎 <b>${formatTND(gainNetReel)} TND</b>\n\n` +
+      `📑 <b>PIPELINE DEVIS (Indicatif) :</b>\n` +
+      `• Devis émis en cours : <b>${devisCount}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `<i>Données synchronisées en temps réel.</i>`;
+      `<i>Calcul basé sur le flux de trésorerie réel (Encaissements - Dépenses).</i>`;
 
     await ctx.reply(text, { parse_mode: 'HTML' });
   } catch (error: any) {
@@ -193,7 +312,7 @@ export async function handleHistoriqueClient(ctx: Context) {
         text +=
           `\n<b>${idx + 1}. [${item.type}] ${item.numeroFacture}</b> — ${item.date}\n` +
           `• Acte : ${item.actePrincipal}\n` +
-          `• Total TTC : <b>${item.totalHTFormatted} TND</b> | Marge : <b>${item.margeNetteFormatted} TND</b>\n` +
+          `• Total TTC : <b>${item.totalHTFormatted} TND</b>\n` +
           `• Statut : ${badge} (Acompte: ${formatTND(item.acompte)} TND)\n`;
       });
     }
@@ -248,18 +367,20 @@ export async function handleHelp(ctx: Context) {
     `📖 <b>MANUEL D'UTILISATION — PERLA ERP TELEGRAM</b>\n` +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `1️⃣ <b>CRÉER UN DEVIS OU UNE FACTURE :</b>\n` +
-    `• Tapez /nouveau pour démarrer le guide pas-à-pas.\n` +
-    `• Renseignez les données patientes (chiffrement AES-256 automatique du passeport).\n` +
-    `• Ajoutez les actes médicaux, prix et quantités.\n` +
-    `• Ajoutez les charges directes (Hôtel, Transferts VIP, Bloc, Clinique).\n` +
-    `• Le bot calcule la marge nette, le solde restant et génère le PDF officiel au design Perla Body Sculpt.\n\n` +
-    `2️⃣ <b>CONTRÔLE FINANCIER :</b>\n` +
-    `• /stats_mois : Visualisez le CA, les charges totales et le bénéfice net du mois.\n` +
-    `• /historique_client : Retrouvez l'historique médical et financier d'une patiente.\n` +
-    `• /export_excel : Téléchargez le tableau comptable complet pour Excel.\n\n` +
-    `3️⃣ <b>SÉCURITÉ :</b>\n` +
-    `• /pin <code>[code]</code> : Déverrouille l'accès financier pendant 2h.\n` +
-    `• /lock : Re-verrouille immédiatement la session.`;
+    `• Cliquez sur "📄 Créer un Devis" ou "📑 Créer une Facture".\n` +
+    `• Renseignez les données patientes (chiffrement AES-256 automatique).\n` +
+    `• Ajoutez les actes médicaux.\n` +
+    `• Le bot génère automatiquement le PDF officiel.\n\n` +
+    `2️⃣ <b>DÉPENSES & CHARGES (MASARIF) :</b>\n` +
+    `• Cliquez sur "💸 Ajouter Dépense" ou tapez /depense pour enregistrer tout masrouf (Clinique, Bloc, Loyer, Sponsor...).\n` +
+    `• Tapez /historique_depenses pour consulter la liste des dépenses enregistrées.\n\n` +
+    `3️⃣ <b>CONTRÔLE FINANCIER & GAIN NET :</b>\n` +
+    `• /stats_mois : Visualisez l'argent réellement encaissé, le total des charges et le gain net réel.\n` +
+    `• /historique_client : Retrouvez les pièces comptables d'une patiente.\n` +
+    `• /export_excel : Téléchargez le tableau comptable pour Excel.\n\n` +
+    `4️⃣ <b>SÉCURITÉ :</b>\n` +
+    `• /pin <code>[code]</code> : Déverrouille l'accès financier.\n` +
+    `• /lock : Verrouille la session.`;
 
   await ctx.reply(helpText, { parse_mode: 'HTML' });
 }

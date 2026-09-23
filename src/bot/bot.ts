@@ -10,11 +10,14 @@ import {
   handleHistoriqueClient,
   handleExportExcel,
   handleHelp,
+  handleAddExpense,
+  handleHistoriqueDepenses,
 } from './handlers/commands.js';
 import {
   createDocumentConversation,
   BotContext,
 } from './conversations/factureConversation.js';
+import { addExpenseConversation } from './conversations/expenseConversation.js';
 
 let botInstance: Bot<BotContext> | null = null;
 
@@ -22,7 +25,6 @@ export function getBot(): Bot<BotContext> {
   if (botInstance) return botInstance;
 
   // Création du Bot avec le token configuré
-  // Si le token n'est pas encore renseigné par l'utilisateur, nous utilisons un token factice pour l'instanciation
   const token = config.telegram.botToken || '123456789:AAFakeTokenForInitializationOnly00000';
   
   const bot = new Bot<BotContext>(token);
@@ -37,8 +39,9 @@ export function getBot(): Bot<BotContext> {
   // 2. Plugin Conversations de grammY
   bot.use(conversations());
 
-  // 3. Enregistrement de la conversation interactive de création
+  // 3. Enregistrement des conversations interactives
   bot.use(createConversation(createDocumentConversation));
+  bot.use(createConversation(addExpenseConversation));
 
   // 4. Middleware de sécurité : Whitelist des IDs Telegram
   bot.use(whitelistMiddleware);
@@ -49,12 +52,14 @@ export function getBot(): Bot<BotContext> {
   bot.command('pin', handlePin);
   bot.command('lock', handleLock);
 
-  // 6. Commandes financières
+  // 6. Commandes financières & Dépenses
   bot.command('stats_mois', handleStatsMois);
   bot.command('historique_client', handleHistoriqueClient);
   bot.command('export_excel', handleExportExcel);
+  bot.command(['depense', 'ajouter_depense'], handleAddExpense);
+  bot.command('historique_depenses', handleHistoriqueDepenses);
 
-  // 7. Lancement de la conversation interactive
+  // 7. Lancement des conversations interactives
   bot.command(['nouveau', 'creer', 'facture', 'devis'], async (ctx) => {
     await ctx.conversation.enter('createDocumentConversation');
   });
@@ -64,13 +69,13 @@ export function getBot(): Bot<BotContext> {
     await ctx.conversation.enter('createDocumentConversation');
   });
 
+  bot.hears(['💸 Ajouter Dépense', 'Ajouter Dépense', 'Masrouf'], handleAddExpense);
   bot.hears(['📊 Bilan du Mois', 'Stats du Mois', 'Bilan'], handleStatsMois);
   bot.hears(['📥 Export Excel', 'Export Excel', 'Export'], handleExportExcel);
   bot.hears(['ℹ️ Manuel d\'Aide', 'Aide', 'Manuel'], handleHelp);
   bot.hears(['🔒 Verrouiller', 'Verrouiller'], handleLock);
 
   bot.hears(['🔐 Code PIN (2026)', 'Déverrouiller PIN'], async (ctx) => {
-    // Si l'utilisateur clique sur le bouton PIN avec le code par défaut
     const userId = ctx.from?.id;
     if (userId) {
       const { setPinVerified } = await import('./middlewares/authMiddleware.js');
@@ -108,6 +113,8 @@ export async function setupBotCommands(bot: Bot<BotContext>) {
   try {
     await bot.api.setMyCommands([
       { command: 'nouveau', description: 'Créer un Devis ou une Facture pas-à-pas' },
+      { command: 'depense', description: 'Enregistrer une dépense / charge fixe (Masrouf)' },
+      { command: 'historique_depenses', description: 'Afficher la liste des charges fixes' },
       { command: 'stats_mois', description: 'Afficher le bilan financier & marge du mois' },
       { command: 'historique_client', description: 'Rechercher l\'historique d\'une patiente' },
       { command: 'export_excel', description: 'Exporter les données comptables (Excel/CSV)' },
@@ -122,15 +129,13 @@ export async function setupBotCommands(bot: Bot<BotContext>) {
 }
 
 /**
- * Lance le bot en mode Long Polling (essentiel pour le dev local sur PC/localhost)
+ * Lance le bot en mode Long Polling
  */
 export async function startBotPolling(bot: Bot<BotContext>) {
   try {
-    // Supprime tout webhook résiduel pour libérer l'écoute getUpdates
     await bot.api.deleteWebhook({ drop_pending_updates: false });
     console.log('[Telegram Bot] Ancien webhook libéré. Démarrage de l\'écoute en direct (Long Polling)...');
 
-    // Démarrage de l'écoute continue des messages
     bot.start({
       onStart: (botInfo) => {
         console.log(`[Telegram Bot] 🚀 EN LIGNE ! Le bot écoute et répond en direct sur Telegram : @${botInfo.username}`);
