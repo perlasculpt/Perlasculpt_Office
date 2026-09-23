@@ -184,26 +184,23 @@ export async function handleStatsMois(ctx: Context) {
 
     // 1. Récupération des Factures (Seules les factures comptent dans la caisse)
     const factures = await Facture.find({
-      type: 'FACTURE', // 👈 'type' au lieu de 'typeDocument'
-      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+      type: 'FACTURE',
+      createdAt: { $gte: startOfMonth,$lte: endOfMonth },
     }).lean();
 
     let totalFactureBrut = 0;
     let totalEncaisse = 0;
-    let totalResteAPercevoir = 0;
 
     factures.forEach((f) => {
-      const net = f.totalHT || 0; // 👈 'totalHT' au lieu de 'totalNet'
-      const acompte = f.acompte || 0; // 👈 'acompte' au lieu de 'acomptePaye'
-      totalFactureBrut += net;
-      totalEncaisse += acompte;
-      totalResteAPercevoir += Math.max(0, net - acompte);
+      const montantTotal = f.totalHT || 0;
+      totalFactureBrut += montantTotal;
+      totalEncaisse += montantTotal; // Kol facture tahseb direct f flous dakhla
     });
 
     // Pipeline Devis (Indicatif uniquement)
     const devisCount = await Facture.countDocuments({
-      type: 'DEVIS', // 👈 'type' au lieu de 'typeDocument'
-      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+      type: 'DEVIS',
+      createdAt: { $gte: startOfMonth,$lte: endOfMonth },
     });
 
     // 2. Récupération des Dépenses (Directes + Fixes)
@@ -224,7 +221,7 @@ export async function handleStatsMois(ctx: Context) {
 
     const totalDepenses = totalChargesDirectes + totalChargesFixes;
 
-    // 3. Calcul du Gain Net Réel (Argent Réellement Encaissé - Total Dépenses)
+    // 3. Calcul du Gain Net Réel (Total Factures - Total Dépenses)
     const gainNetReel = totalEncaisse - totalDepenses;
     const moisNom = now.toLocaleString('fr-FR', { month: 'long', year: 'numeric' }).toUpperCase();
 
@@ -234,19 +231,17 @@ export async function handleStatsMois(ctx: Context) {
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
       `📥 <b>ENTRÉES D'ARGENT (Factures uniquement) :</b>\n` +
       `• Factures émises : <b>${factures.length}</b>\n` +
-      `• Total Facturé (Brut) : <b>${formatTND(totalFactureBrut)} TND</b>\n` +
-      `• 💰 <b>Total Réellement Encaissé : ${formatTND(totalEncaisse)} TND</b>\n` +
-      `• Soldes restants à percevoir : <b>${formatTND(totalResteAPercevoir)} TND</b>\n\n` +
+      `• 💰 <b>Total Flous Dakhla (Caisse) : ${formatTND(totalEncaisse)} TND</b>\n\n` +
       `📤 <b>SORTIES D'ARGENT (Dépenses) :</b>\n` +
       `• Charges Directes (Clinique, Bloc...) : 🔻 <b>${formatTND(totalChargesDirectes)} TND</b>\n` +
       `• Charges Fixes (Loyer, Pub Meta...) : 🔻 <b>${formatTND(totalChargesFixes)} TND</b>\n` +
       `• 💸 <b>Total Dépenses Cumulées : 🔻 ${formatTND(totalDepenses)} TND</b>\n\n` +
-      `🟢 <b>RÉSULTAT NET & CAISSE RÉELLE :</b>\n` +
+      `🟢 <b>RÉSULTAT NET :</b>\n` +
       `• Gain Net Réel : 💎 <b>${formatTND(gainNetReel)} TND</b>\n\n` +
       `📑 <b>PIPELINE DEVIS (Indicatif) :</b>\n` +
       `• Devis émis en cours : <b>${devisCount}</b>\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `<i>Calcul basé sur le flux de trésorerie réel (Encaissements - Dépenses).</i>`;
+      `<i>Calcul basé sur le montant total des factures - les dépenses.</i>`;
 
     await ctx.reply(text, { parse_mode: 'HTML' });
   } catch (error: any) {
@@ -308,12 +303,10 @@ export async function handleHistoriqueClient(ctx: Context) {
       text += `<i>Aucune facture ou devis enregistré pour le moment.</i>\n`;
     } else {
       res.items.forEach((item, idx) => {
-        const badge = item.statutPaiement === 'PAYE' ? '🟢 PAYÉ' : item.statutPaiement === 'PARTIEL' ? '🟡 PARTIEL' : '🔴 EN ATTENTE';
         text +=
           `\n<b>${idx + 1}. [${item.type}] ${item.numeroFacture}</b> — ${item.date}\n` +
           `• Acte : ${item.actePrincipal}\n` +
-          `• Total TTC : <b>${item.totalHTFormatted} TND</b>\n` +
-          `• Statut : ${badge} (Acompte: ${formatTND(item.acompte)} TND)\n`;
+          `• Total TTC : <b>${item.totalHTFormatted} TND</b>\n`;
       });
     }
 
@@ -349,7 +342,7 @@ export async function handleExportExcel(ctx: Context) {
         `📊 <b>EXPORT COMPTABLE & FINANCIER COMPLET</b>\n\n` +
         `• Format : CSV UTF-8 (Compatible Microsoft Excel, Google Sheets, LibreOffice)\n` +
         `• Sécurité : Noms et passeports déchiffrés pour usage administratif officiel\n` +
-        `• Contient : Chiffre d'Affaires, Décomposition des charges, Marges nettes, Suivi acomptes.\n\n` +
+        `• Contient : Chiffre d'Affaires, Décomposition des charges, Marges nettes.\n\n` +
         `<i>Généré le ${new Date().toLocaleDateString('fr-FR')} par Perla Body Sculpt ERP.</i>`,
       parse_mode: 'HTML',
     });
@@ -375,7 +368,7 @@ export async function handleHelp(ctx: Context) {
     `• Cliquez sur "💸 Ajouter Dépense" ou tapez /depense pour enregistrer tout masrouf (Clinique, Bloc, Loyer, Sponsor...).\n` +
     `• Tapez /historique_depenses pour consulter la liste des dépenses enregistrées.\n\n` +
     `3️⃣ <b>CONTRÔLE FINANCIER & GAIN NET :</b>\n` +
-    `• /stats_mois : Visualisez l'argent réellement encaissé, le total des charges et le gain net réel.\n` +
+    `• /stats_mois : Visualisez le total des factures, le total des charges et le gain net réel.\n` +
     `• /historique_client : Retrouvez les pièces comptables d'une patiente.\n` +
     `• /export_excel : Téléchargez le tableau comptable pour Excel.\n\n` +
     `4️⃣ <b>SÉCURITÉ :</b>\n` +
