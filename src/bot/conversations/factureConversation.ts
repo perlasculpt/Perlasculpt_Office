@@ -477,7 +477,7 @@ export async function createDocumentConversation(
       : `• <b>Date facture</b> : ${dateFacture} | <b>Intervention le</b> : ${dateIntervention}\n` +
         `• <b>Zones traitées</b> : ${zonesTraitees}\n`) +
     `• <b>Prestations médicales</b> : ${formatTND(totalPrestationsTND)} TND\n` +
-    (isEtranger ? `• <b>Hôtel 5★</b> : ${nomHotel} (${nuitsHotel} - ${formatTND(montantHotelTND + montantAccompagnateurHotelTND)} TND)\n` : '') +
+    (isEtranger ? `• <b>Hôtel </b> : ${nomHotel} (${nuitsHotel} - ${formatTND(montantHotelTND + montantAccompagnateurHotelTND)} TND)\n` : '') +
     (isEtranger ? `• <b>Sous-total Transferts</b> : ${formatTND(sousTotalTransfertsTND)} TND\n` : '') +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
     `• <b>TOTAL GÉNÉRAL</b> : <b>${formatTND(totalSejourTND)} TND</b>\n` +
