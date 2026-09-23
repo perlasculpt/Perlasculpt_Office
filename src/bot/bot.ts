@@ -12,6 +12,7 @@ import {
   handleHelp,
   handleAddExpense,
   handleHistoriqueDepenses,
+  handleListeDocuments, // 👈 Import de la nouvelle commande
 } from './handlers/commands.js';
 import {
   createDocumentConversation,
@@ -55,6 +56,7 @@ export function getBot(): Bot<BotContext> {
   // 6. Commandes financières & Dépenses
   bot.command('stats_mois', handleStatsMois);
   bot.command('historique_client', handleHistoriqueClient);
+  bot.command(['liste_documents', 'documents'], handleListeDocuments); // 👈 Commande Telegram
   bot.command('export_excel', handleExportExcel);
   bot.command(['depense', 'ajouter_depense'], handleAddExpense);
   bot.command('historique_depenses', handleHistoriqueDepenses);
@@ -71,6 +73,7 @@ export function getBot(): Bot<BotContext> {
 
   bot.hears(['💸 Ajouter Dépense', 'Ajouter Dépense', 'Masrouf'], handleAddExpense);
   bot.hears(['📊 Bilan du Mois', 'Stats du Mois', 'Bilan'], handleStatsMois);
+  bot.hears(['📜 Liste Documents', 'Liste Documents', 'Documents'], handleListeDocuments); // 👈 Bouton du menu
   bot.hears(['📥 Export Excel', 'Export Excel', 'Export'], handleExportExcel);
   bot.hears(['ℹ️ Manuel d\'Aide', 'Aide', 'Manuel'], handleHelp);
   bot.hears(['🔒 Verrouiller', 'Verrouiller'], handleLock);
@@ -113,6 +116,7 @@ export async function setupBotCommands(bot: Bot<BotContext>) {
   try {
     await bot.api.setMyCommands([
       { command: 'nouveau', description: 'Créer un Devis ou une Facture pas-à-pas' },
+      { command: 'liste_documents', description: 'Afficher la liste de tous les devis & factures' }, // 👈 Menu Telegram
       { command: 'depense', description: 'Enregistrer une dépense / charge fixe (Masrouf)' },
       { command: 'historique_depenses', description: 'Afficher la liste des charges fixes' },
       { command: 'stats_mois', description: 'Afficher le bilan financier & marge du mois' },

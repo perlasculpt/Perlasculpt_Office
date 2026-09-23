@@ -15,8 +15,9 @@ export const mainMenuKeyboard = new Keyboard()
   .text('💸 Ajouter Dépense')
   .row()
   .text('🔍 Chercher Patiente')
-  .text('📥 Export Excel')
+  .text('📜 Liste Documents')
   .row()
+  .text('📥 Export Excel')
   .text('ℹ️ Manuel d\'Aide')
   .resized();
 
@@ -376,4 +377,69 @@ export async function handleHelp(ctx: Context) {
     `• /lock : Verrouille la session.`;
 
   await ctx.reply(helpText, { parse_mode: 'HTML' });
+}
+
+/**
+ * Commande /liste_documents : Affichage de la liste de toutes les factures et devis
+ */
+export async function handleListeDocuments(ctx: Context) {
+  const userId = ctx.from?.id;
+  if (userId && !isUserPinVerified(userId)) {
+    return ctx.reply(
+      `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\nTapez : <code>/pin [code]</code>`,
+      { parse_mode: 'HTML' }
+    );
+  }
+
+  await ctx.reply('🔍 <i>Récupération de la liste des documents...</i>', { parse_mode: 'HTML' });
+
+  try {
+    // Récupération de tous les documents triés du plus récent au plus ancien (-1)
+    const docs = await Facture.find()
+      .populate('patientId')
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean();
+
+    if (docs.length === 0) {
+      return ctx.reply('📄 <b>Aucun document (Facture ou Devis) enregistré pour le moment.</b>', { parse_mode: 'HTML' });
+    }
+
+    let text =
+      `📑 <b>HISTORIQUE DES FACTURES & DEVIS</b>\n` +
+      `<i>(Trié du plus récent au plus ancien)</i>\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    let totalFactures = 0;
+    let totalDevis = 0;
+
+    docs.forEach((doc: any, idx: number) => {
+      const d = new Date(doc.createdAt || doc.date).toLocaleDateString('fr-FR');
+      const isFacture = doc.type === 'FACTURE';
+      const badge = isFacture ? '🧾 FACTURE' : '📄 DEVIS';
+      const patientName = doc.patientId?.nomPrenom || doc.patientNom || 'Inconnu';
+      const numDoc = doc.numeroFacture || doc.numeroDevis || `DOC-${idx + 1}`;
+      const montant = doc.totalHT || 0;
+
+      if (isFacture) totalFactures += montant;
+      else totalDevis += montant;
+
+      text +=
+        `<b>${idx + 1}. [${badge}] ${numDoc}</b> — <code>${d}</code>\n` +
+        `• Patiente : <b>${patientName}</b>\n` +
+        `• Acte : ${doc.actePrincipal || 'N/A'}\n` +
+        `• Montant Total : <b>${formatTND(montant)} TND</b>\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    });
+
+    text +=
+      `\n📊 <b>RÉCAPITULATIF :</b>\n` +
+      `• Total Factures (Caisse) : <b>${formatTND(totalFactures)} TND</b>\n` +
+      `• Total Devis (Pipeline) : <b>${formatTND(totalDevis)} TND</b>`;
+
+    await ctx.reply(text, { parse_mode: 'HTML' });
+  } catch (error: any) {
+    console.error('Erreur liste_documents:', error);
+    await ctx.reply(`⚠️ Erreur lors de la récupération : ${error.message}`);
+  }
 }
