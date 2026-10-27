@@ -3,7 +3,7 @@ import { webhookCallback } from 'grammy';
 import { config } from './config/env.js';
 import { connectDB, isDbConnected } from './config/db.js';
 import { getBot, setupBotCommands } from './bot/bot.js';
-import { validateWebhookSecret } from './bot/middlewares/authMiddleware.js';
+import { validateWebhookSecret, SECURITY_ENABLED, setSecurityEnabled } from './bot/middlewares/authMiddleware.js';
 import { FinanceService } from './services/financeService.js';
 import { PdfService, formatTND } from './services/pdfService.js';
 import { CryptoService } from './services/cryptoService.js';
@@ -19,8 +19,8 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     clinic: config.clinic.name,
-    modeTest: true,
-    security: 'Désactivée pour tests (Accès libre & sans PIN)',
+    security: SECURITY_ENABLED ? 'Actif (Whitelist + PIN)' : 'Désactivé (Mode Test libre)',
+    securityEnabled: SECURITY_ENABLED,
     database: {
       connected: isDbConnected(),
       mode: isDbConnected() ? 'MongoDB (Mongoose)' : 'Mémoire haute performance (Fallback)',
@@ -28,14 +28,27 @@ app.get('/api/health', (req: Request, res: Response) => {
     telegram: {
       botConfigured: Boolean(config.telegram.botToken && !config.telegram.botToken.startsWith('123456789:AAFake')),
       whitelistCount: config.telegram.whitelistIds.length,
-      pinProtected: false, // Désactivé pour les tests
-      modeTest: true,
+      whitelistIds: config.telegram.whitelistIds,
+      pinProtected: SECURITY_ENABLED,
+      adminPinConfigured: Boolean(config.telegram.adminPin),
+      securityEnabled: SECURITY_ENABLED,
     },
     crypto: {
       algorithm: 'AES-256-GCM',
       status: 'Actif & Sécurisé',
     },
   });
+});
+
+// Route pour activer/désactiver ou vérifier la sécurité
+app.post('/api/security/toggle', (req: Request, res: Response) => {
+  const { enabled } = req.body;
+  if (typeof enabled === 'boolean') {
+    setSecurityEnabled(enabled);
+  } else {
+    setSecurityEnabled(!SECURITY_ENABLED);
+  }
+  res.json({ success: true, securityEnabled: SECURITY_ENABLED });
 });
 
 // --- 2. STATISTIQUES FINANCIÈRES (DASHBOARD & /stats_mois) ---

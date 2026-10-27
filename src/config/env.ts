@@ -13,6 +13,7 @@ export interface AppConfig {
   };
   security: {
     encryptionKey: string;
+    enabled: boolean;
   };
   db: {
     mongoUri: string;
@@ -47,6 +48,7 @@ export const config: AppConfig = {
   security: {
     // 32-byte secret key for AES-256-GCM
     encryptionKey: process.env.ENCRYPTION_KEY || 'perla_body_sculpt_aes256_key_32_bytes!',
+    enabled: process.env.SECURITY_ENABLED !== 'false',
   },
   db: {
     mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/perla_erp',

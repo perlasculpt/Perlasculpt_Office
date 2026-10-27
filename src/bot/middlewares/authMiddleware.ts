@@ -2,8 +2,12 @@ import { Context, NextFunction } from 'grammy';
 import { config } from '../../config/env.js';
 import { Request, Response, NextFunction as ExpressNext } from 'express';
 
-// Flag de sécurité désactivée pour la phase de test (à la demande de l'utilisateur)
-export let SECURITY_ENABLED = false;
+// Flag de sécurité activé par défaut (peut être désactivé via SECURITY_ENABLED=false dans .env)
+export let SECURITY_ENABLED = config.security.enabled;
+
+export function setSecurityEnabled(enabled: boolean) {
+  SECURITY_ENABLED = enabled;
+}
 
 // Sessions PIN en mémoire (TelegramId -> Timestamp de dernière vérification)
 const verifiedPinSessions = new Map<number, number>();
@@ -33,9 +37,15 @@ export async function whitelistMiddleware(ctx: Context, next: NextFunction) {
   if (!isWhitelisted) {
     console.warn(`[Sécurité Bot] Tentative d'accès non autorisée de l'ID Telegram: ${telegramId} (@${ctx.from?.username || 'inconnu'})`);
     return ctx.reply(
-      `⛔ <b>ACCÈS REFUSÉ — PERLA BODY SCULPT ERP</b>\n\n` +
-      `Votre identifiant Telegram (<code>${telegramId}</code>) n'est pas autorisé sur ce système médical sécurisé.\n\n` +
-      `<i>Veuillez contacter la direction de l'établissement pour ajouter votre identifiant à la whitelist.</i>`,
+      `⛔ <b>ACCÈS SÉCURISÉ — PERLA BODY SCULPT ERP</b>\n\n` +
+      `Votre identifiant Telegram : <code>${telegramId}</code>\n` +
+      `Cet identifiant n'est pas encore enregistré dans la liste blanche autorisée (Whitelist).\n\n` +
+      `📋 <b>Pour autoriser cet accès :</b>\n` +
+      `1. Ouvrez votre fichier <code>.env</code>\n` +
+      `2. Ajoutez ou complétez la variable avec votre ID :\n` +
+      `<code>TELEGRAM_WHITELIST_IDS="${telegramId}"</code>\n` +
+      `<i>(Si plusieurs utilisateurs : <code>TELEGRAM_WHITELIST_IDS="${telegramId},AUTRE_ID"</code>)</i>\n` +
+      `3. Redémarrez le serveur (<code>npm run dev</code>).`,
       { parse_mode: 'HTML' }
     );
   }

@@ -26,6 +26,7 @@ export const mainMenuKeyboard = new Keyboard()
  */
 export async function handleStart(ctx: Context) {
   const userId = ctx.from?.id;
+  const isUnlocked = userId ? isUserPinVerified(userId) : true;
 
   const text =
     `💎 <b>PERLA BODY SCULPT — ERP FINANCIER CLINIQUE & BOT</b>\n` +
@@ -33,7 +34,8 @@ export async function handleStart(ctx: Context) {
     `Bienvenue sur le système de devis, facturation et analyse de marge pour la chirurgie et médecine esthétique.\n\n` +
     `⚡ <b>Statut système :</b>\n` +
     `• Utilisateur Telegram : <code>${userId}</code> (Autorisé)\n` +
-    `• Mode Test : 🟢 <b>Accès Libre (Sécurité & PIN désactivés pour tests)</b>\n` +
+    `• Sécurité : ${SECURITY_ENABLED ? '🔒 <b>Active (Whitelist & Protection PIN)</b>' : '🟢 <b>Mode Test (Accès libre)</b>'}\n` +
+    `• Session financière : ${isUnlocked ? '🔓 <b>Déverrouillée</b>' : '🔒 <b>Verrouillée (/pin requis pour stats)</b>'}\n` +
     `• Chiffrement médical : <b>AES-256-GCM Actif</b>\n\n` +
     `Utilisez les boutons ci-dessous ou tapez vos commandes directement :`;
 
@@ -104,7 +106,7 @@ export async function handleAddExpense(ctx: BotContext) {
     return ctx.reply(
       `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\n` +
       `L'enregistrement des dépenses nécessite le déverrouillage PIN.\n` +
-      `Tapez : <code>/pin ${config.telegram.adminPin || '2026'}</code> pour continuer.`,
+      `Tapez :}</code>code pin pour continuer.`,
       { parse_mode: 'HTML' }
     );
   }
@@ -171,7 +173,7 @@ export async function handleStatsMois(ctx: Context) {
     return ctx.reply(
       `🔒 <b>AUTHENTIFICATION REQUISE</b>\n\n` +
       `La consultation des chiffres d'affaires et du gain net nécessite de déverrouiller votre session.\n` +
-      `Tapez : <code>/pin ${config.telegram.adminPin || '2026'}</code> pour continuer.`,
+      `Tapez :</code>code pin pour continuer.`,
       { parse_mode: 'HTML' }
     );
   }
