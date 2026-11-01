@@ -1,519 +1,168 @@
-import { type Conversation, type ConversationFlavor } from '@grammyjs/conversations';
-import { type Context, type SessionFlavor, InputFile, Keyboard } from 'grammy';
-import { FinanceService } from '../../services/financeService.js';
-import { PdfService, formatTND, formatEUR } from '../../services/pdfService.js';
-import { CategorieCharge } from '../../models/Facture.js';
-
-export type BotContext = ConversationFlavor<Context & SessionFlavor<Record<string, any>>>;
-export type BotConversation = Conversation<BotContext, BotContext>;
-
-export async function createDocumentConversation(
-  conversation: BotConversation,
-  ctx: BotContext
-) {
-  const profileKeyboard = new Keyboard()
-    .text('🇹🇳 Patiente Tunisienne (TND)')
-    .text('🌍 Patiente Étrangère (EUR)')
-    .row()
-    .text('❌ Annuler')
-    .resized()
-    .oneTime();
-
-  await ctx.reply(
-    `💎 <b>PERLA BODY SCULPT — ÉMISSION D'UN DOCUMENT</b>\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `Sélectionnez le profil de la patiente :\n\n` +
-    `• <b>🇹🇳 Patiente Tunisienne</b> : Tarification en TND.\n` +
-    `• <b>🌍 Patiente Étrangère</b> : Tarification saisie en TND avec conversion automatique du Total en EUR fil-lākhir.`,
-    { parse_mode: 'HTML', reply_markup: profileKeyboard }
-  );
-
-  const profileMsg = await conversation.waitFor(':text');
-  const profileChoice = profileMsg.message?.text?.trim();
-
-  if (profileChoice?.includes('Annuler') || profileChoice === '/cancel') {
-    return ctx.reply('🚫 Opération annulée.', { reply_markup: { remove_keyboard: true } });
-  }
-
-  const isEtranger = profileChoice?.includes('Étrangère') || profileChoice?.includes('EUR');
-  const clientType: 'TUNISIEN' | 'ETRANGER' = isEtranger ? 'ETRANGER' : 'TUNISIEN';
-
-  const typeKeyboard = new Keyboard()
-    .text('📄 DEVIS')
-    .text('📑 FACTURE')
-    .row()
-    .text('❌ Annuler')
-    .resized()
-    .oneTime();
-
-  await ctx.reply(
-    `Quel type de document souhaitez-vous créer ?\n\n` +
-    `• <b>📄 DEVIS</b> : Proposition d'honoraires détaillée\n` +
-    `• <b>📑 FACTURE</b> : Facture officielle`,
-    { parse_mode: 'HTML', reply_markup: typeKeyboard }
-  );
-
-  const typeMsg = await conversation.waitFor(':text');
-  const typeChoice = typeMsg.message?.text?.trim().toUpperCase();
-
-  if (typeChoice?.includes('ANNULER') || typeChoice === '/CANCEL') {
-    return ctx.reply('🚫 Opération annulée.', { reply_markup: { remove_keyboard: true } });
-  }
-
-  const documentType: 'DEVIS' | 'FACTURE' = typeChoice?.includes('DEVIS') ? 'DEVIS' : 'FACTURE';
-  const todayStr = new Date().toLocaleDateString('fr-FR');
-
-  let nomPrenom = 'Patiente';
-  let dateDevis = todayStr;
-  let dateFacture = todayStr;
-  let validiteDevis = '30 jours';
-  let interventionTitle = 'Liposuccion';
-  let interventionPrevue = 'Liposuccion — Zone abdominale + flancs';
-  let dureeTotaleSejour = isEtranger ? '5 jours / 4 nuits' : '1 nuit';
-  let dateNaissance = '';
-  let passeport = isEtranger ? 'X1234567' : '09876543';
-  let dateIntervention = todayStr;
-  let zonesTraitees = 'Zone abdominale + flancs';
-  let customNumeroFacture = '';
-  let tauxEUR = 3.40;
-
-  const todayKeyboard = new Keyboard()
-    .text(`📅 Aujourd'hui (${todayStr})`)
-    .resized()
-    .oneTime();
-
-  if (isEtranger) {
-    await ctx.reply(`💱 <b>TAUX DE CHANGE (EUR ➡️ TND)</b>\n\nSaisissez le taux de conversion (Exemple: <code>3.40</code>) :`, { parse_mode: 'HTML' });
-    const tauxMsg = await conversation.waitFor(':text');
-    const parsedTaux = parseFloat(tauxMsg.message?.text?.replace(',', '.') || '3.40');
-    if (!isNaN(parsedTaux) && parsedTaux > 0) tauxEUR = parsedTaux;
-  }
-
-  if (documentType === 'DEVIS') {
-    await ctx.reply(`👤 <b>SECTION 1 & 2 : INFORMATIONS PATIENTE</b>\n\nSaisissez le <b>Nom & Prénom</b> de la patiente :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-    nomPrenom = (await conversation.waitFor(':text')).message?.text?.trim() || 'Patiente';
-
-    await ctx.reply(`📅 <b>Date du devis</b> :`, { parse_mode: 'HTML', reply_markup: todayKeyboard });
-    const dDevisText = (await conversation.waitFor(':text')).message?.text?.trim() || '';
-    dateDevis = dDevisText.includes("Aujourd'hui") ? todayStr : (dDevisText || todayStr);
-
-    const validiteKeyboard = new Keyboard().text('30 jours').text('15 jours').row().text('60 jours').text('90 jours').resized().oneTime();
-    await ctx.reply(`⏳ <b>Validité du devis</b> :`, { parse_mode: 'HTML', reply_markup: validiteKeyboard });
-    validiteDevis = (await conversation.waitFor(':text')).message?.text?.trim() || '30 jours';
-
-    const actesKeyboard = new Keyboard().text('Liposuccion').text('BBL Sculpting HD').row().text('Liposuccion + Lipo-injection').text('Rhinoplastie').row().text('Chirurgie Mammaire').resized().oneTime();
-    await ctx.reply(`💉 <b>Intervention</b> :\nSélectionnez le type d'intervention :`, { parse_mode: 'HTML', reply_markup: actesKeyboard });
-    interventionTitle = (await conversation.waitFor(':text')).message?.text?.trim() || 'Liposuccion';
-
-    await ctx.reply(`🎯 <b>Intervention prévue</b> (ex: <code>Liposuccion — Abdomen + flancs</code>) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-    const prevText = (await conversation.waitFor(':text')).message?.text?.trim();
-    interventionPrevue = prevText ? prevText : `${interventionTitle} — Abdomen + flancs`;
-
-    const dureeKeyboard = new Keyboard().text(isEtranger ? '5 jours / 4 nuits' : '1 nuit').text(isEtranger ? '4 nuits' : '2 nuits').row().text(isEtranger ? '7 jours / 6 nuits' : 'Soins ambulatoires').resized().oneTime();
-    await ctx.reply(`🏨 <b>Durée estimative du séjour</b> :`, { parse_mode: 'HTML', reply_markup: dureeKeyboard });
-    dureeTotaleSejour = (await conversation.waitFor(':text')).message?.text?.trim() || (isEtranger ? '5 jours / 4 nuits' : '1 nuit');
-
-  } else {
-    const nextAutoNum = await conversation.external(() => FinanceService.generateNextNumero('FACTURE'));
-    const numKeyboard = new Keyboard().text(`Numéro auto : ${nextAutoNum}`).resized().oneTime();
-    await ctx.reply(`📑 <b>SECTION 1 : HEADER</b>\n\n<b>N° de la facture</b> :`, { parse_mode: 'HTML', reply_markup: numKeyboard });
-    const numInput = (await conversation.waitFor(':text')).message?.text?.trim();
-    customNumeroFacture = (numInput?.includes('Numéro auto :') || !numInput || numInput === '-') ? nextAutoNum : numInput;
-
-    await ctx.reply(`📅 <b>Date de la facture</b> :`, { parse_mode: 'HTML', reply_markup: todayKeyboard });
-    const dFactText = (await conversation.waitFor(':text')).message?.text?.trim() || '';
-    dateFacture = dFactText.includes("Aujourd'hui") ? todayStr : (dFactText || todayStr);
-
-    await ctx.reply(`🏥 <b>Date de l'intervention</b> :`, { parse_mode: 'HTML', reply_markup: todayKeyboard });
-    const dIntText = (await conversation.waitFor(':text')).message?.text?.trim() || '';
-    dateIntervention = dIntText.includes("Aujourd'hui") ? todayStr : (dIntText || todayStr);
-
-    const zonesKeyboard = new Keyboard().text('Abdomen + flancs').text('Abdomen complet').row().text('Flancs + culotte de cheval').text('Bras + cuisses').resized().oneTime();
-    await ctx.reply(`🎯 <b>Zones traitées</b> :`, { parse_mode: 'HTML', reply_markup: zonesKeyboard });
-    const zText = (await conversation.waitFor(':text')).message?.text?.trim();
-    zonesTraitees = zText && zText !== '-' ? zText : 'Abdomen + flancs';
-    interventionPrevue = `Liposuccion — ${zonesTraitees}`;
-
-    await ctx.reply(`👤 <b>Nom & Prénom de la patiente</b> :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-    nomPrenom = (await conversation.waitFor(':text')).message?.text?.trim() || 'Patiente';
-
-    await ctx.reply(`🎂 <b>Date de naissance</b> (ex: <code>12/03/1990</code> ou <code>-</code>) :`, { parse_mode: 'HTML' });
-    const rawBirth = (await conversation.waitFor(':text')).message?.text?.trim();
-    dateNaissance = rawBirth === '-' ? '' : (rawBirth || '');
-
-    await ctx.reply(`🔒 <b>N° Passeport / CIN</b> :`, { parse_mode: 'HTML' });
-    passeport = (await conversation.waitFor(':text')).message?.text?.trim() || (isEtranger ? 'X1234567' : '09876543');
-  }
-
-  let telephone = '+216 26 723 876';
-  let nationalite = isEtranger ? 'Française' : 'Tunisienne';
-  let paysResidence = isEtranger ? 'France' : 'Tunisie';
-
-  let prestations = [];
-  let nuitsClinique = 1;
-  let m_consultation = 100, m_bilan = 150, m_honoraires = 6000, m_anesthesie = 800, m_bloc = 1200;
-  let m_sejour_clinique = 700, m_soins = 200, m_medicaments = 150;
-  let m_contention = 250, m_drainage = 200, m_accompagnateur = 0, m_controle = 0;
-
-  if (documentType === 'DEVIS') {
-    await ctx.reply(`▫️ <b>Combien de nuits en clinique sont prévues ?</b> (défaut: 1) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-    const qClVal = parseInt((await conversation.waitFor(':text')).message?.text?.trim() || '1', 10);
-    if (!isNaN(qClVal) && qClVal > 0) nuitsClinique = qClVal;
-
-    const defaultPrestationsNames = [
-      "Consultation préopératoire", "Bilan / examens préopératoires", "Honoraires chirurgicaux",
-      "Anesthésie", "Frais de bloc opératoire", `Séjour en clinique – ${nuitsClinique} nuit(s)`,
-      "Soins et surveillance postopératoires", "Médicaments et soins postopératoires",
-      "Vêtement de contention", "Drainage", "Supp. accompagnateur", "Contrôle postopératoire"
-    ];
-
-    let customPrestations = [];
-    await ctx.reply(`📋 <b>1. PRESTATIONS MÉDICALES (Devis)</b>\n\nSaisissez le nom pour chaque prestation (ou Entrée pour garder le défaut).\nTapez <code>-</code> pour ignorer une prestation.`, { parse_mode: 'HTML' });
-
-    for (let i = 0; i < defaultPrestationsNames.length; i++) {
-      await ctx.reply(`▫️ ${i + 1}. Nom (défaut: <i>${defaultPrestationsNames[i]}</i>) :`, { parse_mode: 'HTML' });
-      const pMsg = await conversation.waitFor(':text');
-      let pName = pMsg.message?.text?.trim();
-
-      if (pName === '-') continue; 
-      if (!pName) pName = defaultPrestationsNames[i];
-
-      let qty = 1;
-      if (pName.toLowerCase().includes('clinique') || pName.toLowerCase().includes('séjour')) {
-        qty = nuitsClinique;
-      }
-
-      customPrestations.push({
-        designation: pName,
-        quantite: qty,
-        prixUnitaire: 0 
-      });
-    }
-
-    await ctx.reply(`💰 <b>TOTAL DES PRESTATIONS</b>\n\nSaisissez le <b>TOTAL en TND</b> pour l'ensemble de ces prestations (ex: <code>5000</code>) :`, { parse_mode: 'HTML' });
-    const totalPrestMsg = await conversation.waitFor(':text');
-    let totalPrestationsTND = parseFloat(totalPrestMsg.message?.text?.replace(',', '.') || '0');
-    if (isNaN(totalPrestationsTND) || totalPrestationsTND < 0) totalPrestationsTND = 0;
-
-    const totalQty = customPrestations.reduce((sum, p) => sum + p.quantite, 0);
-    if (totalQty > 0) {
-      const pricePerItem = Math.floor((totalPrestationsTND / totalQty) * 100) / 100;
-      customPrestations.forEach(p => p.prixUnitaire = pricePerItem);
-      
-      let currentTotal = customPrestations.reduce((sum, p) => sum + (p.quantite * p.prixUnitaire), 0);
-      let diff = totalPrestationsTND - currentTotal;
-      if (diff !== 0 && customPrestations.length > 0) {
-        customPrestations[0].prixUnitaire += (diff / customPrestations[0].quantite);
-        customPrestations[0].prixUnitaire = Math.round(customPrestations[0].prixUnitaire * 100) / 100;
-      }
-    }
-    prestations = customPrestations;
-
-  } else {
-    await ctx.reply(`▫️ <b>Combien de nuits en clinique sont prévues ?</b> (défaut: 1) :`, { parse_mode: 'HTML' });
-    const qClVal = parseInt((await conversation.waitFor(':text')).message?.text?.trim() || '1', 10);
-    if (!isNaN(qClVal) && qClVal > 0) nuitsClinique = qClVal;
-    m_sejour_clinique = 700 * nuitsClinique;
-
-    await ctx.reply(`▫️ 1. <b>Consultation préopératoire (TND)</b> (défaut: ${m_consultation}) :`, { parse_mode: 'HTML' });
-    let val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_consultation = val;
-
-    await ctx.reply(`▫️ 2. <b>Bilan / examens préopératoires (TND)</b> (défaut: ${m_bilan}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_bilan = val;
-
-    await ctx.reply(`▫️ 3. <b>Honoraires chirurgicaux (TND)</b> (défaut: ${m_honoraires}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_honoraires = val;
-
-    await ctx.reply(`▫️ 4. <b>Anesthésie (TND)</b> (défaut: ${m_anesthesie}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_anesthesie = val;
-
-    await ctx.reply(`▫️ 5. <b>Frais de bloc opératoire (TND)</b> (défaut: ${m_bloc}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_bloc = val;
-
-    await ctx.reply(`▫️ 6. <b>Séjour en clinique — Total TND</b> (défaut: ${m_sejour_clinique}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_sejour_clinique = val;
-
-    await ctx.reply(`▫️ 7. <b>Soins postopératoires (TND)</b> (défaut: ${m_soins}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_soins = val;
-
-    await ctx.reply(`▫️ 8. <b>Médicaments (TND)</b> (défaut: ${m_medicaments}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_medicaments = val;
-
-    await ctx.reply(`▫️ 9. <b>Vêtement de contention (TND)</b> (défaut: ${m_contention}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_contention = val;
-
-    await ctx.reply(`▫️ 10. <b>Drainage (TND)</b> (défaut: ${m_drainage}) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_drainage = val;
-
-    await ctx.reply(`▫️ 11. <b>Supplément accompagnateur (TND)</b> (tapez 0 si aucun) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_accompagnateur = val;
-
-    await ctx.reply(`▫️ 12. <b>Contrôle postopératoire (TND)</b> (tapez 0 si inclus) :`, { parse_mode: 'HTML' });
-    val = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-    if (!isNaN(val)) m_controle = val;
-
-    prestations = [
-      { designation: 'Consultation préopératoire', quantite: 1, prixUnitaire: m_consultation },
-      { designation: 'Bilan / examens préopératoires', quantite: 1, prixUnitaire: m_bilan },
-      { designation: 'Honoraires chirurgicaux', quantite: 1, prixUnitaire: m_honoraires },
-      { designation: 'Anesthésie', quantite: 1, prixUnitaire: m_anesthesie },
-      { designation: 'Frais de bloc opératoire', quantite: 1, prixUnitaire: m_bloc },
-      { designation: `Séjour en clinique – ${nuitsClinique} nuit(s)`, quantite: nuitsClinique, prixUnitaire: nuitsClinique > 0 ? m_sejour_clinique / nuitsClinique : m_sejour_clinique },
-      { designation: 'Soins et surveillance postopératoires', quantite: 1, prixUnitaire: m_soins },
-      { designation: 'Médicaments et soins postopératoires', quantite: 1, prixUnitaire: m_medicaments },
-      { designation: 'Vêtement de contention', quantite: 1, prixUnitaire: m_contention },
-      { designation: 'Drainage', quantite: 1, prixUnitaire: m_drainage },
-      { designation: 'Supp. accompagnateur', quantite: 1, prixUnitaire: m_accompagnateur },
-      { designation: 'Contrôle postopératoire', quantite: 1, prixUnitaire: m_controle },
-    ];
-  }
-
-  let nomHotel = 'Hôtel The Residence Tunis 5★';
-  let nuitsHotel = '4 nuits';
-  let nbNuitsHotelNum = 4;
-  let prixNuiteeHotelTND = 340;
-  let montantHotelTND = 0;
-  let nuitsAccompagnateurHotel = '';
-  let montantAccompagnateurHotelTND = 0;
-  let transferts: Array<{ designation: string; quantite: number; montant: number }> = [];
-  let sousTotalTransfertsTND = 0;
-
-  if (isEtranger) {
-    if (documentType === 'DEVIS') {
-      await ctx.reply(`🏨 <b>HÉBERGEMENT HÔTELIER</b>\n\nNombre de nuits à l'hôtel (défaut: 4) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-      const nbNuitsMsg = await conversation.waitFor(':text');
-      const nbNuitsInput = parseInt(nbNuitsMsg.message?.text?.trim() || '4', 10);
-      if (!isNaN(nbNuitsInput) && nbNuitsInput > 0) {
-        nbNuitsHotelNum = nbNuitsInput;
-        nuitsHotel = `${nbNuitsHotelNum} nuits`;
-      }
-
-      await ctx.reply(`🏨 Nom de l'hôtel (défaut: <i>${nomHotel}</i>) :`, { parse_mode: 'HTML' });
-      nomHotel = (await conversation.waitFor(':text')).message?.text?.trim() || nomHotel;
-
-      await ctx.reply(`💰 <b>Total Hébergement Hôtelier (TND)</b> (tapez le montant total) :`, { parse_mode: 'HTML' });
-      montantHotelTND = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0;
-
-      await ctx.reply(`🚘 <b>Total Transferts VIP (TND)</b> (tapez le montant total) :`, { parse_mode: 'HTML' });
-      sousTotalTransfertsTND = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0;
-
-      transferts = [
-        { designation: "Accueil à l'aéroport", quantite: 1, montant: 0 },
-        { designation: "Transfert aéroport – hôtel", quantite: 1, montant: 0 },
-        { designation: "Transfert hôtel – clinique", quantite: 1, montant: 0 },
-        { designation: "Transfert clinique – hôtel", quantite: 1, montant: 0 },
-        { designation: "Transfert hôtel – aéroport", quantite: 1, montant: 0 },
-        { designation: "Assistance pendant le séjour", quantite: 1, montant: 0 },
-      ];
-
-    } else {
-      const hotelPromptKeyboard = new Keyboard().text('⭐ Standard (4 nuits @ 340 TND/nuit = 1360 TND)').row().text('✏️ Personnaliser l\'hébergement').resized().oneTime();
-      await ctx.reply(`🏨 <b>2. HÉBERGEMENT HÔTELIER PARTENAIRE  (En TND)</b>\n\nChoisissez l'option d'hébergement :`, { parse_mode: 'HTML', reply_markup: hotelPromptKeyboard });
-      const hotelChoice = await conversation.waitFor(':text');
-
-      if (hotelChoice.message?.text?.includes('Personnaliser')) {
-        await ctx.reply(`▫️ Nom de l'hôtel (ex: <code>Hôtel The Residence Tunis </code>) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-        nomHotel = (await conversation.waitFor(':text')).message?.text?.trim() || nomHotel;
-
-        await ctx.reply(`▫️ Nombre de nuits (ex: <code>4</code>) :`, { parse_mode: 'HTML' });
-        nbNuitsHotelNum = parseInt((await conversation.waitFor(':text')).message?.text?.trim() || '4', 10) || 4;
-        nuitsHotel = `${nbNuitsHotelNum} nuits`;
-
-        await ctx.reply(`▫️ Prix de la nuitée en TND (ex: <code>340</code>) :`, { parse_mode: 'HTML' });
-        prixNuiteeHotelTND = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '340') || 340;
-        montantHotelTND = nbNuitsHotelNum * prixNuiteeHotelTND;
-
-        await ctx.reply(`▫️ Supplément accompagnateur hôtel en TND (Total séjour, tapez <code>0</code> si aucun) :`, { parse_mode: 'HTML' });
-        montantAccompagnateurHotelTND = Math.max(0, parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0);
-        if (montantAccompagnateurHotelTND > 0) nuitsAccompagnateurHotel = nuitsHotel;
-      } else {
-        montantHotelTND = 1360;
-      }
-
-      await ctx.reply(`🚘 <b>3. TRANSFERTS ET ACCOMPAGNEMENT (En TND)</b>\n\nSaisissez le montant pour chaque transfert en Dinars Tunisiens (TND) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-
-      let m_acc_aeroport = 30, m_tr_aero_hotel = 35, m_tr_hotel_clinique = 25, m_tr_clinique_hotel = 25, m_tr_hotel_aero = 35, m_assistance = 50;
-      
-      await ctx.reply(`▫️ 1. <b>Accueil à l'aéroport (TND)</b> (défaut: ${m_acc_aeroport}) :`, { parse_mode: 'HTML' });
-      let trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_acc_aeroport = trVal;
-
-      await ctx.reply(`▫️ 2. <b>Transfert aéroport – hôtel (TND)</b> (défaut: ${m_tr_aero_hotel}) :`, { parse_mode: 'HTML' });
-      trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_tr_aero_hotel = trVal;
-
-      await ctx.reply(`▫️ 3. <b>Transfert hôtel – clinique (TND)</b> (défaut: ${m_tr_hotel_clinique}) :`, { parse_mode: 'HTML' });
-      trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_tr_hotel_clinique = trVal;
-
-      await ctx.reply(`▫️ 4. <b>Transfert clinique – hôtel (TND)</b> (défaut: ${m_tr_clinique_hotel}) :`, { parse_mode: 'HTML' });
-      trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_tr_clinique_hotel = trVal;
-
-      await ctx.reply(`▫️ 5. <b>Transfert hôtel – aéroport (TND)</b> (défaut: ${m_tr_hotel_aero}) :`, { parse_mode: 'HTML' });
-      trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_tr_hotel_aero = trVal;
-
-      await ctx.reply(`▫️ 6. <b>Assistance pendant le séjour (TND)</b> (défaut: ${m_assistance}) :`, { parse_mode: 'HTML' });
-      trVal = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '');
-      if (!isNaN(trVal)) m_assistance = trVal;
-
-      transferts = [
-        { designation: "Accueil à l'aéroport", quantite: 1, montant: m_acc_aeroport },
-        { designation: "Transfert aéroport – hôtel", quantite: 1, montant: m_tr_aero_hotel },
-        { designation: "Transfert hôtel – clinique", quantite: 1, montant: m_tr_hotel_clinique },
-        { designation: "Transfert clinique – hôtel", quantite: 1, montant: m_tr_clinique_hotel },
-        { designation: "Transfert hôtel – aéroport", quantite: 1, montant: m_tr_hotel_aero },
-        { designation: "Assistance pendant le séjour", quantite: 1, montant: m_assistance },
-      ];
-
-      sousTotalTransfertsTND = transferts.reduce((sum, t) => sum + t.montant, 0);
-    }
-  }
-
-  const totalPrestationsTNDCalc = prestations.reduce((sum, p) => sum + p.quantite * p.prixUnitaire, 0);
-  const totalSejourTND = totalPrestationsTNDCalc + montantHotelTND + montantAccompagnateurHotelTND + sousTotalTransfertsTND;
-  const totalSejourEUR = (isEtranger && tauxEUR > 0) ? totalSejourTND / tauxEUR : 0;
-
-  let acompte = 0;
-  if (documentType === 'FACTURE') {
-    await ctx.reply(`💰 <b>MONTANT DÉJÀ RÉGLÉ & NET À PAYER</b>\n\n• Montant total : <b>${formatTND(totalSejourTND)} TND</b> ${isEtranger ? `(${formatEUR(totalSejourEUR)} €)` : ''}\n\nIndiquez le <b>Montant déjà réglé</b> par la patiente (en TND, tapez <code>0</code> si aucun) :`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-    acompte = Math.max(0, parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0);
-  }
-
-  const netAPayerTND = Math.max(0, totalSejourTND - acompte);
-
-  const charges: Array<{ categorie: CategorieCharge; montant: number; description: string }> = [
-    { categorie: 'Bloc', montant: m_bloc, description: 'Frais de bloc opératoire' },
-    { categorie: 'Clinique', montant: m_sejour_clinique, description: 'Séjour clinique' },
-    { categorie: 'Chirurgie', montant: Math.round(m_honoraires * 0.6), description: 'Rémunération équipe médicale' },
-  ];
-  if (isEtranger) {
-    charges.push({ categorie: 'Hôtel', montant: montantHotelTND, description: 'Frais hôtel partenaire ' });
-    charges.push({ categorie: 'Transfert', montant: sousTotalTransfertsTND, description: 'Service chauffeur privé VIP' });
-  }
-  const totalChargesTND = charges.reduce((sum, c) => sum + c.montant, 0);
-  const margeNetteTND = totalSejourTND - totalChargesTND;
-  const margeNetteEUR = tauxEUR > 0 ? margeNetteTND / tauxEUR : 0;
-
-  const confirmKeyboard = new Keyboard().text('✅ Confirmer & Générer le PDF').text('❌ Annuler').resized().oneTime();
-
-  await ctx.reply(
-    `📋 <b>RÉCAPITULATIF DU DOCUMENT PERLA BODY SCULPT</b>\n` +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `• <b>Type</b> : <b>${documentType}</b> (${isEtranger ? '🌍 Étranger' : '🇹🇳 Tunisien'})\n` +
-    `• <b>Patiente</b> : <b>${nomPrenom}</b>\n` +
-    (documentType === 'DEVIS'
-      ? `• <b>Date devis</b> : ${dateDevis} | <b>Validité</b> : ${validiteDevis}\n` +
-        `• <b>Intervention</b> : ${interventionPrevue}\n`
-      : `• <b>Date facture</b> : ${dateFacture} | <b>Intervention le</b> : ${dateIntervention}\n` +
-        `• <b>Zones traitées</b> : ${zonesTraitees}\n`) +
-    `• <b>Prestations médicales</b> : ${formatTND(totalPrestationsTNDCalc)} TND\n` +
-    (isEtranger ? `• <b>Hôtel </b> : ${nomHotel} (${nbNuitsHotelNum} nuits - ${formatTND(montantHotelTND + montantAccompagnateurHotelTND)} TND)\n` : '') +
-    (isEtranger ? `• <b>Sous-total Transferts</b> : ${formatTND(sousTotalTransfertsTND)} TND\n` : '') +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-    `• <b>TOTAL GÉNÉRAL</b> : <b>${formatTND(totalSejourTND)} TND</b>\n` +
-    (isEtranger ? `• <b>TOTAL ÉQUIVALENT EN EURO</b> : <b>${formatEUR(totalSejourEUR)} €</b>\n` : '') +
-    (isEtranger ? `<i>(Taux appliqué : 1 EUR = ${tauxEUR.toFixed(2)} TND)</i>\n` : '') +
-    (documentType === 'FACTURE' ? `• <b>Acompte</b> : ${formatTND(acompte)} TND | <b>Net à payer</b> : <b>${formatTND(netAPayerTND)} TND</b>\n` : '') +
-    `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
-    `Générer le PDF officiel ?`,
-    { parse_mode: 'HTML', reply_markup: confirmKeyboard }
-  );
-
-  const confirmMsg = await conversation.waitFor(':text');
-  const confirmText = confirmMsg.message?.text?.toLowerCase() || '';
-  
-  if (!confirmText.includes('confirm') && !confirmText.includes('oui') && !confirmText.includes('ok')) {
-    return ctx.reply('🚫 Création du document annulée.', { reply_markup: { remove_keyboard: true } });
-  }
-
-  await ctx.reply(`⏳ <i>Génération du PDF officiel en cours...</i>`, { parse_mode: 'HTML', reply_markup: { remove_keyboard: true } });
-
-  try {
-    const pdfData = await conversation.external(async () => {
-      const { doc, patient } = await FinanceService.createDocument({
-        type: documentType,
-        clientType,
-        devise: 'TND',
-        patientData: { nomPrenom, passeport, telephone, nationalite, paysResidence, dateNaissance },
-        actePrincipal: interventionTitle,
-        prestations,
-        charges,
-        acompte,
-        nomHotel,
-        nuitsHotel,
-        montantHotel: montantHotelTND,
-        nuitsAccompagnateurHotel,
-        montantAccompagnateurHotel: montantAccompagnateurHotelTND,
-        transferts,
-        dureeSejourClinique: `${nuitsClinique} nuit(s)`,
-        zonesTraitees,
-        validiteDevis,
-        dateDevis,
-        dateFacture,
-        dateIntervention,
-        dureeTotaleSejour,
-        interventionPrevue,
-        nuitsClinique,
-        numeroFacture: customNumeroFacture || undefined,
-      });
-
-      const docObject = doc.toObject ? doc.toObject() : doc;
-
-      const payloadPdf = {
-        ...docObject,
-        prestations: prestations,
-        nuitsClinique: String(nuitsClinique),
-        nbNuitsHotelNum: String(nbNuitsHotelNum),
-        sousTotalPrestations: totalPrestationsTNDCalc.toFixed(2),
-        sousTotalHotel: (montantHotelTND + montantAccompagnateurHotelTND).toFixed(2),
-        sousTotalTransferts: sousTotalTransfertsTND.toFixed(2),
-        devise: 'TND',
-        totalSejour: totalSejourTND.toFixed(2),
-        totalSejourEUR: totalSejourEUR.toFixed(2),
-        totalEUR: totalSejourEUR.toFixed(2),
-        tauxEUR: tauxEUR.toFixed(2),
-      };
-
-      const buffer = await PdfService.generatePdf(payloadPdf, patient);
-      return {
-        bufferBase64: buffer.toString('base64'),
-        numeroFacture: doc.numeroFacture,
-        totalTND: totalSejourTND,
-        totalEUR: totalSejourEUR,
-        acompte,
-        soldeRestantTND: netAPayerTND,
-      };
-    });
-
-    const pdfBuffer = Buffer.from(pdfData.bufferBase64, 'base64');
-    const fileName = `${pdfData.numeroFacture}_${nomPrenom.replace(/\s+/g, '_')}.pdf`;
-
-    await ctx.replyWithDocument(new InputFile(pdfBuffer, fileName), {
-      caption:
-        `✨ <b>${documentType} OFFICIEL — PERLA BODY SCULPT</b>\n\n` +
-        `• <b>Numéro</b> : <code>${pdfData.numeroFacture}</code>\n` +
-        `• <b>Patiente</b> : ${nomPrenom}\n` +
-        `• <b>Montant Total (TND)</b> : <b>${formatTND(pdfData.totalTND)} TND</b>\n` +
-        (isEtranger ? `• <b>Équivalent EUR</b> : <b>${formatEUR(pdfData.totalEUR)} €</b>\n` : '') +
-        (documentType === 'FACTURE' ? `• <b>Acompte réglé</b> : ${formatTND(pdfData.acompte)} TND\n• <b>Net à payer</b> : <b>${formatTND(pdfData.soldeRestantTND)} TND</b>\n` : '') +
-        `\n<i>Document généré avec succès.</i>`,
-      parse_mode: 'HTML',
-    });
-  } catch (error: any) {
-    console.error('Erreur génération PDF bot:', error);
-    await ctx.reply(`⚠️ <b>Erreur lors de la génération du PDF :</b> ${error.message}`, { parse_mode: 'HTML' });
-  }
-}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Devis – {{interventionTitle}} — Perla Body Sculpt</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+  :root { --bordeaux: #4A111C; --creme: #F3E8DE; --rose: #C9A6A5; --dore: #B08D57; --blanc: #FFF9F5; --texte: #5A5A5A; --radius: 8px; --serif: 'Playfair Display', Georgia, serif; --sans: 'Plus Jakarta Sans', Arial, sans-serif; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--blanc); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family: var(--sans); font-size: 8px; line-height: 1.35; color: var(--texte); }
+  .page { width: 210mm; height: 296mm; margin: 0 auto; padding: 14px 18px; background: var(--blanc); display: flex; flex-direction: column; justify-content: flex-start; gap: 5px; overflow: hidden; }
+  .page > section { flex-shrink: 0; }
+  .header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding-bottom: 6px; border-bottom: 2px solid var(--bordeaux); }
+  .header-left { text-align: left; }
+  .brand-name { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--bordeaux); letter-spacing: .1em; text-transform: uppercase; line-height: 1.1; margin-bottom: 3px; }
+  .brand-info { font-size: 7px; line-height: 1.45; color: var(--texte); }
+  .header-center { text-align: center; }
+  .logo { width: 64px; height: 64px; object-fit: contain; display: block; margin: 0 auto; }
+  .header-right { text-align: right; }
+  .doc-title { font-family: var(--serif); font-size: 16px; font-weight: 700; color: var(--bordeaux); letter-spacing: .1em; text-transform: uppercase; line-height: 1.1; }
+  .doc-sub { font-family: var(--serif); font-size: 9px; color: var(--dore); font-weight: 600; letter-spacing: .2em; text-transform: uppercase; margin-top: 2px; }
+  .meta-list { margin-top: 5px; display: grid; gap: 1px; justify-items: end; }
+  .meta-row { display: flex; gap: 6px; font-size: 7px; }
+  .meta-row dt { color: var(--texte); }
+  .meta-row dd { color: var(--bordeaux); font-weight: 700; }
+  .card { background: var(--creme); border: 1px solid var(--rose); border-radius: var(--radius); padding: 6px 10px; }
+  .card-title { font-family: var(--serif); font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--bordeaux); padding-bottom: 3px; margin-bottom: 4px; border-bottom: 1px solid var(--rose); }
+  .info-list { display: grid; gap: 1px; }
+  .info-row { display: grid; grid-template-columns: 105px 1fr; gap: 5px; font-size: 7.5px; }
+  .info-row dt { color: var(--texte); }
+  .info-row dd { color: var(--bordeaux); font-weight: 600; }
+  .section-title { display: flex; align-items: center; gap: 5px; margin: 2px 0 4px; font-family: var(--serif); font-size: 8.5px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--bordeaux); }
+  .section-title::before { content: ""; width: 12px; height: 2px; background: var(--rose); }
+  .table-wrap { border: 1px solid var(--rose); border-radius: var(--radius); overflow: hidden; background: var(--blanc); }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead th { background: var(--bordeaux); color: #fff; font-weight: 600; font-size: 7px; padding: 4px 7px; text-align: right; letter-spacing: .04em; }
+  thead th:first-child { text-align: left; }
+  thead th.c-center { text-align: center; }
+  tbody td { padding: 3px 7px; text-align: right; vertical-align: top; color: var(--texte); font-size: 7px; }
+  tbody td:first-child { text-align: left; }
+  tbody td.c-center { text-align: center; }
+  tbody tr:nth-child(even) td { background: var(--creme); }
+  .col-des { width: 58%; }
+  .col-qty { width: 14%; }
+  .col-mnt { width: 28%; }
+  .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody tr.subtotal td { background: var(--creme) !important; border-top: 1px solid var(--rose); font-weight: 700; color: var(--bordeaux); font-family: var(--serif); }
+  .grand-total { background: var(--bordeaux); color: #fff; padding: 7px 12px; border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .grand-total .label { font-family: var(--serif); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #fff; }
+  .grand-total .value { font-family: var(--serif); font-size: 15px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+  .accompagnement { background: var(--creme); border: 1px solid var(--rose); border-left: 3px solid var(--dore); border-radius: var(--radius); padding: 5px 8px; display: flex; align-items: flex-start; gap: 8px; }
+  .accompagnement .icon { font-family: var(--serif); font-size: 13px; color: var(--dore); line-height: 1; flex-shrink: 0; }
+  .accompagnement .text { font-size: 7.5px; line-height: 1.45; color: var(--texte); }
+  .accompagnement .text strong { color: var(--bordeaux); }
+  .footer { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
+  .foot-bar { display: flex; justify-content: center; align-items: center; gap: 6px; font-size: 7px; letter-spacing: .15em; color: var(--bordeaux); padding-top: 4px; border-top: 1px solid var(--rose); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="header">
+    <div class="header-left">
+      <div class="brand-name">Perla Body Sculpt</div>
+      <div class="brand-info">
+        22 RUE EMERAUDES, Le Kram, Tunisie<br>
+        Tél : +216 26 723 876<br>
+        perlabodyartcontact@gmail.com<br>
+        MF : 1997944N
+      </div>
+    </div>
+    <div class="header-center">
+      <img class="logo" src="{{logoBase64}}" alt="Perla Body Sculpt">
+    </div>
+    <div class="header-right">
+      <h1 class="doc-title">Devis</h1>
+      <div class="doc-sub">{{interventionTitle}}</div>
+      <dl class="meta-list">
+        <div class="meta-row"><dt>Date :</dt><dd>{{dateDevis}}</dd></div>
+        <div class="meta-row"><dt>Validité :</dt><dd>{{validiteDevis}}</dd></div>
+        <div class="meta-row"><dt>Patiente :</dt><dd>{{patientNomPrenom}}</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <section>
+    <h2 class="section-title">Informations patiente</h2>
+    <article class="card">
+      <dl class="info-list">
+        <div class="info-row"><dt>Nom &amp; Prénom</dt><dd>{{patientNomPrenom}}</dd></div>
+        <div class="info-row"><dt>Date du devis</dt><dd>{{dateDevis}}</dd></div>
+        <div class="info-row"><dt>Intervention prévue</dt><dd>{{interventionPrevue}}</dd></div>
+        <div class="info-row"><dt>Durée estimative du séjour</dt><dd>{{dureeSejour}}</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section>
+    <h2 class="section-title">1. Prestations médicales</h2>
+    <div class="table-wrap">
+      <table>
+        <colgroup><col class="col-des"><col class="col-qty"><col class="col-mnt"></colgroup>
+        <thead><tr><th>Désignation</th><th class="c-center">Quantité</th><th>Montant</th></tr></thead>
+        <tbody>
+          {{#each prestations}}
+          <tr>
+            <td>{{this.designation}}</td>
+            <td class="c-center">{{this.quantite}}</td>
+            <td class="amount"></td>
+          </tr>
+          {{/each}}
+          <tr class="subtotal"><td>Sous-total prestations médicales</td><td></td><td class="amount">{{sousTotalPrestations}} TND</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="grand-total">
+      <span class="label">Total du séjour</span>
+      <span class="value">{{totalSejour}} TND</span>
+    </div>
+  </section>
+
+  <section>
+    <h2 class="section-title">Ce montant comprend</h2>
+    <article class="card">
+      <ul class="clean">
+        <li>L'intervention de liposuccion selon les zones définies lors de la consultation ;</li>
+        <li>Les frais d'anesthésie et de bloc opératoire ;</li>
+        <li>{{nuitsClinique}} nuit(s) en clinique ;</li>
+        <li>Les contrôles postopératoires prévus ;</li>
+      </ul>
+    </article>
+  </section>
+
+  <section>
+    <h2 class="section-title">Ne sont pas inclus</h2>
+    <article class="card">
+      <p style="font-size:8px; line-height:1.55;">Sauf mention contraire : <strong>dépenses personnelles</strong>, <strong>examens ou traitements supplémentaires</strong> rendus nécessaires par l'état de santé de la patiente, <strong>nuits supplémentaires</strong> et prestations non mentionnées dans le présent devis.</p>
+    </article>
+  </section>
+
+  <section>
+    <div class="accompagnement">
+      <span class="icon">✦</span>
+      <p class="text"><strong>Accompagnement personnalisé du patient</strong> avant, pendant et après l'intervention : coordination des rendez-vous, informations préopératoires et suivi postopératoire.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="note"><strong>Important :</strong> le devis définitif sera confirmé après consultation médicale et évaluation de l'indication opératoire. La durée d'hospitalisation et les soins postopératoires peuvent être adaptés selon l'évolution clinique de la patiente.</p>
+  </section>
+
+  <section>
+    <article class="card">
+      <h2 class="card-title">Validité du devis</h2>
+      <p style="font-size:8.5px;"><strong>{{validiteDevis}}</strong></p>
+    </article>
+  </section>
+
+  <footer class="footer">
+    <div class="foot-bar"><span>★ PERLA BODY SCULPT &nbsp;·&nbsp; 22 RUE EMERAUDES, Le KRAM, TUNIS ★</span></div>
+  </footer>
+</div>
+</body>
+</html>
