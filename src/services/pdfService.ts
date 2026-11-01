@@ -110,22 +110,17 @@ export class PdfService {
   private static loadTemplates() {
     const templatesDir = path.resolve(process.cwd(), 'src/templates');
 
-    if (!devisEtrangerTemplate) {
-      const src = fs.readFileSync(path.join(templatesDir, 'devis_etranger.hbs'), 'utf8');
-      devisEtrangerTemplate = handlebars.compile(src);
-    }
-    if (!devisTunisienTemplate) {
-      const src = fs.readFileSync(path.join(templatesDir, 'devis_tunisien.hbs'), 'utf8');
-      devisTunisienTemplate = handlebars.compile(src);
-    }
-    if (!factureEtrangerTemplate) {
-      const src = fs.readFileSync(path.join(templatesDir, 'facture_etranger.hbs'), 'utf8');
-      factureEtrangerTemplate = handlebars.compile(src);
-    }
-    if (!factureTunisienTemplate) {
-      const src = fs.readFileSync(path.join(templatesDir, 'facture_tunisien.hbs'), 'utf8');
-      factureTunisienTemplate = handlebars.compile(src);
-    }
+    const srcDevisEtranger = fs.readFileSync(path.join(templatesDir, 'devis_etranger.hbs'), 'utf8');
+    devisEtrangerTemplate = handlebars.compile(srcDevisEtranger);
+
+    const srcDevisTunisien = fs.readFileSync(path.join(templatesDir, 'devis_tunisien.hbs'), 'utf8');
+    devisTunisienTemplate = handlebars.compile(srcDevisTunisien);
+
+    const srcFactureEtranger = fs.readFileSync(path.join(templatesDir, 'facture_etranger.hbs'), 'utf8');
+    factureEtrangerTemplate = handlebars.compile(srcFactureEtranger);
+
+    const srcFactureTunisien = fs.readFileSync(path.join(templatesDir, 'facture_tunisien.hbs'), 'utf8');
+    factureTunisienTemplate = handlebars.compile(srcFactureTunisien);
   }
 
   /**
