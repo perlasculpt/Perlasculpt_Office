@@ -407,7 +407,8 @@ export async function createDocumentConversation(
     acompte = Math.max(0, parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0);
   }
 
-  const netAPayerTND = Math.max(0, totalSejourTND - acompte);
+  const soldeRestantTND = Math.max(0, totalSejourTND - acompte);
+  const netAPayerTND = totalSejourTND;
 
   const charges: Array<{ categorie: CategorieCharge; montant: number; description: string }> = [
     { categorie: 'Bloc', montant: m_bloc, description: 'Frais de bloc opératoire' },
@@ -442,7 +443,7 @@ export async function createDocumentConversation(
     `• <b>TOTAL GÉNÉRAL</b> : <b>${formatTND(totalSejourTND)} TND</b>\n` +
     (isEtranger ? `• <b>TOTAL ÉQUIVALENT EN EURO</b> : <b>${formatEUR(totalSejourEUR)} €</b>\n` : '') +
     (isEtranger ? `<i>(Taux appliqué : 1 EUR = ${tauxEUR.toFixed(2)} TND)</i>\n` : '') +
-    (documentType === 'FACTURE' ? `• <b>Acompte</b> : ${formatTND(acompte)} TND | <b>Net à payer</b> : <b>${formatTND(netAPayerTND)} TND</b>\n` : '') +
+    (documentType === 'FACTURE' ? `• <b>Net à payer</b> : <b>${formatTND(netAPayerTND)} TND</b>` + (acompte > 0 ? ` | <b>Acompte</b> : ${formatTND(acompte)} TND` : '') + (soldeRestantTND > 0 ? ` | <b>Solde</b> : ${formatTND(soldeRestantTND)} TND` : '') + `\n` : '') +
     `━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n` +
     `Générer le PDF officiel ?`,
     { parse_mode: 'HTML', reply_markup: confirmKeyboard }
@@ -519,7 +520,8 @@ export async function createDocumentConversation(
         totalTND: totalSejourTND,
         totalEUR: totalSejourEUR,
         acompte,
-        soldeRestantTND: netAPayerTND,
+        netAPayerTND,
+        soldeRestantTND,
       };
     });
 
@@ -533,7 +535,11 @@ export async function createDocumentConversation(
         `• <b>Patiente</b> : ${nomPrenom}\n` +
         `• <b>Montant Total (TND)</b> : <b>${formatTND(pdfData.totalTND)} TND</b>\n` +
         (isEtranger ? `• <b>Équivalent EUR</b> : <b>${formatEUR(pdfData.totalEUR)} €</b>\n` : '') +
-        (documentType === 'FACTURE' ? `• <b>Acompte réglé</b> : ${formatTND(pdfData.acompte)} TND\n• <b>Net à payer</b> : <b>${formatTND(pdfData.soldeRestantTND)} TND</b>\n` : '') +
+        (documentType === 'FACTURE'
+          ? `• <b>Net à payer</b> : <b>${formatTND(pdfData.netAPayerTND || pdfData.totalTND)} TND</b>\n` +
+            (pdfData.acompte > 0 ? `• <b>Acompte réglé</b> : ${formatTND(pdfData.acompte)} TND\n` : '') +
+            (pdfData.soldeRestantTND > 0 ? `• <b>Solde restant</b> : <b>${formatTND(pdfData.soldeRestantTND)} TND</b>\n` : '')
+          : '') +
         `\n<i>Document généré avec succès.</i>`,
       parse_mode: 'HTML',
     });

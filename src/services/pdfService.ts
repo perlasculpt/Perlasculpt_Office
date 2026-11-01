@@ -384,8 +384,12 @@ export class PdfService {
       totalEUR: formatEUR(totalGeneralEUR),
       totalSejourEUR: formatEUR(totalGeneralEUR),
 
+      hasAcompte: acompte > 0,
       montantRegle: formatTND(acompte),
-      netAPayer: formatTND(soldeRestantTND),
+      acompte: formatTND(acompte),
+      soldeRestant: formatTND(soldeRestantTND),
+      soldeRestantTND: formatTND(soldeRestantTND),
+      netAPayer: formatTND(totalGeneralTND),
       montantEnLettres: numberToFrenchWords(totalGeneralTND),
 
       // Objet patient complet
