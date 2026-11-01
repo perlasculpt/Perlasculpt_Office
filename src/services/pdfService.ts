@@ -269,6 +269,38 @@ export class PdfService {
     const cinPasseport = passeportClair || '—';
     const dateNaissance = patient?.dateNaissance || '—';
 
+    const defaultTransferts = [
+      { designation: 'Accueil à l’aéroport', quantite: 1, montant: formatTND(m_accueil_val) },
+      { designation: 'Transfert aéroport – hôtel', quantite: 1, montant: formatTND(m_trans_aero_hotel_val) },
+      { designation: 'Transfert hôtel – clinique', quantite: 1, montant: formatTND(m_trans_hotel_cli_val) },
+      { designation: 'Transfert clinique – hôtel', quantite: 1, montant: formatTND(m_trans_cli_hotel_val) },
+      { designation: 'Transfert hôtel – aéroport', quantite: 1, montant: formatTND(m_trans_hotel_aero_val) },
+      { designation: 'Assistance pendant le séjour', quantite: 1, montant: formatTND(m_assistance_val) },
+    ];
+
+    const formattedTransferts = (rawTransferts && rawTransferts.length > 0)
+      ? rawTransferts.map((t: any) => ({
+          designation: t.designation || '',
+          quantite: t.quantite || 1,
+          montant: formatTND(Number(t.montant) || 0),
+        }))
+      : defaultTransferts;
+
+    const defaultPrestations = [
+      { designation: 'Consultation préopératoire', quantite: 1, montant: formatTND(p_consultation) },
+      { designation: 'Bilan / examens préopératoires', quantite: 1, montant: formatTND(p_bilan) },
+      { designation: 'Honoraires chirurgicaux', quantite: 1, montant: formatTND(p_honoraires) },
+      { designation: 'Anesthésie', quantite: 1, montant: formatTND(p_anesthesie) },
+      { designation: 'Frais de bloc opératoire', quantite: 1, montant: formatTND(p_bloc) },
+      { designation: `Séjour en clinique – ${nuitsClinique} nuit(s)`, quantite: nuitsClinique, montant: formatTND(p_sejour_clinique) },
+      { designation: 'Soins et surveillance postopératoires', quantite: 1, montant: formatTND(p_soins) },
+      { designation: 'Médicaments et soins postopératoires', quantite: 1, montant: formatTND(p_medicaments) },
+      { designation: 'Vêtement de contention', quantite: 1, montant: formatTND(p_contention) },
+      { designation: 'Drainage', quantite: 1, montant: formatTND(p_drainage) },
+      { designation: 'Supplément accompagnateur', quantite: 1, montant: formatTND(p_accompagnateur) },
+      { designation: 'Contrôle postopératoire', quantite: 1, montant: formatTND(p_controle) },
+    ];
+
     return {
       logoBase64: PERLA_LOGO_BASE64,
       numeroFacture: facture.numeroFacture || 'FAC-001',
@@ -293,7 +325,8 @@ export class PdfService {
       dureeTotaleSejour,
       modeReglement: facture.modeReglement || 'Virement bancaire / Espèces',
 
-      // Les 12 prestations médicales (Formatées en TND)
+      // Prestations liste et 12 prestations médicales individuelles (TND)
+      prestations: defaultPrestations,
       nuitsClinique,
       m_consultation: formatTND(p_consultation),
       m_bilan: formatTND(p_bilan),
@@ -318,6 +351,7 @@ export class PdfService {
       sousTotalHotel: formatTND(sousTotalHotel),
 
       // Transferts
+      transferts: formattedTransferts,
       m_accueil: formatTND(m_accueil_val),
       m_trans_aero_hotel: formatTND(m_trans_aero_hotel_val),
       m_trans_hotel_cli: formatTND(m_trans_hotel_cli_val),
@@ -325,6 +359,7 @@ export class PdfService {
       m_trans_hotel_aero: formatTND(m_trans_hotel_aero_val),
       m_assistance: formatTND(m_assistance_val),
       sousTotalTransferts: formatTND(sousTotalTransferts),
+      sousTotalHotelEtTransferts: formatTND(sousTotalHotel + sousTotalTransferts),
 
       // --- TOTAUX & DÉVISE CONVERTIE POUR LES TEMPLATES ---
       totalSejour: formatTND(totalGeneralTND),
