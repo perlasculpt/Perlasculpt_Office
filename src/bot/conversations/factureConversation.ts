@@ -318,13 +318,16 @@ export async function createDocumentConversation(
       await ctx.reply(`🚘 <b>Total Transferts VIP (TND)</b> (tapez le montant total) :`, { parse_mode: 'HTML' });
       sousTotalTransfertsTND = parseFloat((await conversation.waitFor(':text')).message?.text?.replace(',', '.') || '0') || 0;
 
+      const part = Math.round((sousTotalTransfertsTND / 6) * 100) / 100;
+      const remainder = Math.round((sousTotalTransfertsTND - part * 5) * 100) / 100;
+
       transferts = [
-        { designation: "Accueil à l'aéroport", quantite: 1, montant: 0 },
-        { designation: "Transfert aéroport – hôtel", quantite: 1, montant: 0 },
-        { designation: "Transfert hôtel – clinique", quantite: 1, montant: 0 },
-        { designation: "Transfert clinique – hôtel", quantite: 1, montant: 0 },
-        { designation: "Transfert hôtel – aéroport", quantite: 1, montant: 0 },
-        { designation: "Assistance pendant le séjour", quantite: 1, montant: 0 },
+        { designation: "Accueil à l'aéroport", quantite: 1, montant: part },
+        { designation: "Transfert aéroport – hôtel", quantite: 1, montant: part },
+        { designation: "Transfert hôtel – clinique", quantite: 1, montant: part },
+        { designation: "Transfert clinique – hôtel", quantite: 1, montant: part },
+        { designation: "Transfert hôtel – aéroport", quantite: 1, montant: part },
+        { designation: "Assistance pendant le séjour", quantite: 1, montant: remainder },
       ];
 
     } else {
@@ -471,6 +474,8 @@ export async function createDocumentConversation(
         nuitsAccompagnateurHotel,
         montantAccompagnateurHotel: montantAccompagnateurHotelTND,
         transferts,
+        sousTotalTransferts: sousTotalTransfertsTND,
+        montantTransferts: sousTotalTransfertsTND,
         dureeSejourClinique: `${nuitsClinique} nuit(s)`,
         zonesTraitees,
         validiteDevis,
@@ -494,6 +499,7 @@ export async function createDocumentConversation(
         sousTotalPrestations: totalPrestationsTNDCalc.toFixed(2),
         sousTotalHotel: (montantHotelTND + montantAccompagnateurHotelTND).toFixed(2),
         sousTotalTransferts: sousTotalTransfertsTND.toFixed(2),
+        montantTransferts: sousTotalTransfertsTND,
         devise: 'TND',
         totalSejour: totalSejourTND.toFixed(2),
         totalSejourEUR: totalSejourEUR.toFixed(2),

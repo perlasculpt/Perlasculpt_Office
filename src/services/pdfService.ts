@@ -238,17 +238,36 @@ export class PdfService {
     const m_trans_hotel_aero_val = getTransMnt(['hôtel – aéroport', 'hotel - aeroport'], 120);
     const m_assistance_val = getTransMnt(['assistance'], 150);
 
-    const sousTotalTransferts = isEtranger
-      ? (m_accueil_val + m_trans_aero_hotel_val + m_trans_hotel_cli_val + m_trans_cli_hotel_val + m_trans_hotel_aero_val + m_assistance_val)
-      : 0;
+    const explicitTransferts = Number(facture.sousTotalTransferts) || Number(facture.montantTransferts) || 0;
+    const rawTransfertsSum = (rawTransferts || []).reduce((sum: number, t: any) => sum + (Number(t.montant) || 0), 0);
+
+    let sousTotalTransferts = 0;
+    if (isEtranger) {
+      if (explicitTransferts > 0) {
+        sousTotalTransferts = explicitTransferts;
+      } else if (rawTransfertsSum > 0) {
+        sousTotalTransferts = rawTransfertsSum;
+      } else if (facture.totalHT && Number(facture.totalHT) > (calculatedSousTotalPrestations + sousTotalHotel)) {
+        sousTotalTransferts = Math.round((Number(facture.totalHT) - calculatedSousTotalPrestations - sousTotalHotel) * 1000) / 1000;
+      } else {
+        sousTotalTransferts = (m_accueil_val + m_trans_aero_hotel_val + m_trans_hotel_cli_val + m_trans_cli_hotel_val + m_trans_hotel_aero_val + m_assistance_val);
+      }
+    }
 
     // --- TOTAUX EN TND & CONVERSION EUR ---
     let totalGeneralTND = calculatedSousTotalPrestations + sousTotalHotel + sousTotalTransferts;
-    if (facture.totalHT && facture.totalHT > 0 && !isEtranger) {
-      totalGeneralTND = facture.totalHT;
+    if (facture.totalSejour && Number(facture.totalSejour) > 0) {
+      totalGeneralTND = Number(facture.totalSejour);
+    } else if (facture.totalHT && Number(facture.totalHT) > 0) {
+      totalGeneralTND = Number(facture.totalHT);
     }
 
-    const totalGeneralEUR = tauxEUR > 0 ? totalGeneralTND / tauxEUR : 0;
+    let totalGeneralEUR = tauxEUR > 0 ? totalGeneralTND / tauxEUR : 0;
+    if (facture.totalSejourEUR && Number(facture.totalSejourEUR) > 0) {
+      totalGeneralEUR = Number(facture.totalSejourEUR);
+    } else if (facture.totalEUR && Number(facture.totalEUR) > 0) {
+      totalGeneralEUR = Number(facture.totalEUR);
+    }
 
     const acompte = Number(facture.acompte) || 0;
     const soldeRestantTND = Math.max(0, totalGeneralTND - acompte);

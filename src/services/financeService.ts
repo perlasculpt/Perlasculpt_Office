@@ -53,6 +53,8 @@ export interface MemoryFacture {
   nuitsAccompagnateurHotel?: string;
   montantAccompagnateurHotel?: number;
   transferts?: Array<{ designation: string; quantite: number; montant: number }>;
+  sousTotalTransferts?: number;
+  montantTransferts?: number;
   dureeSejourClinique?: string;
   zonesTraitees?: string;
   validiteDevis?: string;
@@ -336,6 +338,8 @@ export class FinanceService {
     nuitsAccompagnateurHotel?: string;
     montantAccompagnateurHotel?: number;
     transferts?: Array<{ designation: string; quantite: number; montant: number }>;
+    sousTotalTransferts?: number;
+    montantTransferts?: number;
     dureeSejourClinique?: string;
     zonesTraitees?: string;
     validiteDevis?: string;
@@ -367,7 +371,9 @@ export class FinanceService {
     let extraSejour = 0;
     if (clientType === 'ETRANGER') {
       extraSejour += (params.montantHotel || 0) + (params.montantAccompagnateurHotel || 0);
-      extraSejour += (params.transferts || []).reduce((acc, t) => acc + (t.montant || 0), 0);
+      const sumTrans = (params.transferts || []).reduce((acc, t) => acc + (t.montant || 0), 0);
+      const montantTrans = params.montantTransferts ?? params.sousTotalTransferts ?? sumTrans;
+      extraSejour += montantTrans;
     }
 
     const totalHT = Math.round((totalPrestations + extraSejour) * 1000) / 1000;
@@ -449,6 +455,8 @@ export class FinanceService {
         nuitsAccompagnateurHotel: params.nuitsAccompagnateurHotel,
         montantAccompagnateurHotel: params.montantAccompagnateurHotel,
         transferts: params.transferts,
+        sousTotalTransferts: params.sousTotalTransferts ?? params.montantTransferts,
+        montantTransferts: params.montantTransferts ?? params.sousTotalTransferts,
         dureeSejourClinique: params.dureeSejourClinique,
         zonesTraitees: params.zonesTraitees,
         validiteDevis: params.validiteDevis,
