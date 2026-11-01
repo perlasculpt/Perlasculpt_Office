@@ -501,7 +501,12 @@ export async function createDocumentConversation(
         tauxEUR: tauxEUR.toFixed(2),
       };
 
-      const buffer = await PdfService.generatePdf(payloadPdf, patient);
+      const buffer = await PdfService.generatePdf({ 
+          ...payloadPdf, 
+          patient: patient, 
+          // N-forcew les prestations houni besh maykoun 7ata 8alta
+          prestations: prestations 
+        }, patient);
       return {
         bufferBase64: buffer.toString('base64'),
         numeroFacture: doc.numeroFacture,
