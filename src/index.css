@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root {
+  --bordeaux: #4A111C;
+  --creme: #F3E8DE;
+  --rose: #C9A6A5;
+  --dore: #B08D57;
+  --blanc: #FFF9F5;
+  --texte: #5A5A5A;
+}
+
+body {
+  background-color: #FFF9F5;
+  color: #5A5A5A;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.font-serif-luxury {
+  font-family: 'Playfair Display', Georgia, serif;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Perla Body Sculpt - Telegram ERP & Facturation",
+  "description": "Système ERP financier et bot Telegram pour clinique esthétique avec génération de devis/factures PDF, chiffrement AES-256 et tableau de bord.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

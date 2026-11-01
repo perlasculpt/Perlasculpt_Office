@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Facture {{numeroFacture}} — {{clinic.name}}</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+
+  :root {
+    --bordeaux: #4A111C;
+    --creme:    #F3E8DE;
+    --rose:     #C9A6A5;
+    --dore:     #B08D57;
+    --blanc:    #FFF9F5;
+    --texte:    #5A5A5A;
+    --radius:   10px;
+    --serif: 'Playfair Display', Georgia, serif;
+    --sans:  'Plus Jakarta Sans', Arial, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--blanc);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    font-family: var(--sans);
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--texte);
+  }
+
+  /* ---------- Page A4 ---------- */
+  .page {
+    width: 210mm;
+    min-height: 296mm;
+    margin: 0 auto;
+    padding: 30px;
+    background: var(--blanc);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ---------- HEADER : 3 colonnes ---------- */
+  .header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--bordeaux);
+  }
+
+  .header-left { text-align: left; }
+
+  .brand-name {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--bordeaux);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    line-height: 1.1;
+  }
+
+  .brand-info {
+    font-size: 8.5px;
+    line-height: 1.6;
+    color: var(--texte);
+  }
+
+  .header-center { text-align: center; }
+
+  .logo-box {
+    width: 100px;
+    height: 100px;
+    border: 2px solid var(--dore);
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    background: var(--creme);
+  }
+  .logo-letter {
+    font-family: var(--serif);
+    font-size: 38px;
+    color: var(--bordeaux);
+    font-weight: 700;
+    line-height: 1;
+  }
+  .logo-sub {
+    font-size: 7px;
+    letter-spacing: 0.15em;
+    color: var(--dore);
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .header-right { text-align: right; }
+
+  .doc-title {
+    font-family: var(--serif);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--bordeaux);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+
+  .doc-sub {
+    font-family: var(--serif);
+    font-size: 12px;
+    color: var(--dore);
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .meta-list {
+    margin-top: 12px;
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+  }
+
+  .meta-row { display: flex; gap: 10px; font-size: 9.5px; }
+  .meta-row dt { color: var(--texte); }
+  .meta-row dd { color: var(--bordeaux); font-weight: 700; }
+
+  /* ---------- Cartes ---------- */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  .card {
+    background: var(--creme);
+    border: 1px solid var(--rose);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .card-title {
+    font-family: var(--serif);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--bordeaux);
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--rose);
+  }
+
+  .info-list { display: grid; gap: 5px; }
+  .info-row {
+    display: grid;
+    grid-template-columns: 105px 1fr;
+    gap: 8px;
+    font-size: 9.5px;
+  }
+  .info-row dt { color: var(--texte); }
+  .info-row dd { color: var(--bordeaux); font-weight: 600; }
+
+  /* ---------- Tableaux ---------- */
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px 0 8px;
+    font-family: var(--serif);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--bordeaux);
+  }
+  .section-title::before {
+    content: "";
+    width: 20px;
+    height: 2px;
+    background: var(--rose);
+  }
+
+  .table-wrap {
+    border: 1px solid var(--rose);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--blanc);
+  }
+
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+
+  thead th {
+    background: var(--bordeaux);
+    color: #fff;
+    font-weight: 600;
+    font-size: 9px;
+    padding: 10px 12px;
+    text-align: right;
+    letter-spacing: .04em;
+  }
+  thead th:first-child { text-align: left; }
+  thead th.c-qty { text-align: center; }
+
+  tbody td {
+    padding: 9px 12px;
+    text-align: right;
+    vertical-align: top;
+    color: var(--texte);
+    font-size: 9.5px;
+  }
+  tbody td:first-child { text-align: left; }
+  tbody td.c-qty { text-align: center; }
+  tbody tr:nth-child(even) td { background: var(--creme); }
+
+  .col-des { width: 46%; }
+  .col-qty { width: 12%; }
+  .col-pu  { width: 21%; }
+  .col-tot { width: 21%; }
+
+  .item-name { color: var(--bordeaux); font-weight: 600; display: block; }
+  .item-detail { display: block; font-size: 8.5px; color: var(--texte); font-weight: 400; margin-top: 2px; }
+  .amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.c-total { color: var(--bordeaux); font-weight: 700; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border: 1px solid var(--rose);
+    border-radius: 999px;
+    font-size: 8.5px;
+    font-weight: 600;
+    color: var(--bordeaux);
+    background: var(--blanc);
+  }
+
+  /* ---------- Totaux ---------- */
+  .finance-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+
+  .card-plain {
+    background: var(--blanc);
+    border: 1px solid var(--rose);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+
+  .totals { display: grid; gap: 6px; }
+  .total-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 10px;
+  }
+  .total-row span:last-child {
+    color: var(--bordeaux);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .total-row.ttc {
+    padding-top: 8px;
+    border-top: 1px dashed var(--rose);
+  }
+  .total-row.ttc span:first-child { color: var(--bordeaux); font-weight: 700; }
+
+  .total-row.solde {
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 2px solid var(--bordeaux);
+    font-size: 13px;
+  }
+  .total-row.solde span:first-child {
+    font-family: var(--serif);
+    font-weight: 700;
+    color: var(--bordeaux);
+  }
+  .total-row.solde span:last-child {
+    font-family: var(--serif);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--bordeaux);
+  }
+
+  /* ---------- Pied de page ---------- */
+  .footer {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .legal {
+    font-size: 7.5px;
+    line-height: 1.6;
+    text-align: justify;
+    color: var(--texte);
+  }
+  .legal strong { color: var(--bordeaux); }
+
+  .signatures {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .sign-box {
+    min-height: 85px;
+    padding: 10px 12px;
+    border: 1px dashed var(--rose);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .sign-title {
+    font-family: var(--serif);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--bordeaux);
+  }
+  .sign-sub { font-size: 8px; color: var(--texte); }
+
+  .foot-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    font-size: 8px;
+    letter-spacing: .15em;
+    color: var(--bordeaux);
+    padding-top: 8px;
+    border-top: 1px solid var(--rose);
+  }
+
+  @media print {
+    html, body { background: var(--blanc); width: 210mm; }
+    .page { margin: 0; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ================= HEADER ================= -->
+  <header class="header">
+    <div class="header-left">
+      <div class="brand-name">{{clinic.name}}</div>
+      <div class="brand-info">
+        {{clinic.address}}<br>
+        Tél : {{clinic.phone}}<br>
+        {{clinic.email}}<br>
+        MF : {{clinic.mf}}
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div class="logo-box">
+        <span class="logo-letter">P</span>
+        <span class="logo-sub">Perla</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <h1 class="doc-title">{{type}}</h1>
+      <div class="doc-sub">N° {{numeroFacture}}</div>
+      <dl class="meta-list">
+        <div class="meta-row"><dt>Date :</dt><dd>{{dateEmission}}</dd></div>
+        <div class="meta-row"><dt>Échéance :</dt><dd>{{dateEcheance}}</dd></div>
+        <div class="meta-row"><dt>Statut :</dt><dd>{{statutPaiement}}</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <!-- ================= PATIENTE / INTERVENTION ================= -->
+  <section class="grid-2">
+    <article class="card">
+      <h2 class="card-title">Informations patiente</h2>
+      <dl class="info-list">
+        <div class="info-row"><dt>Nom &amp; Prénom</dt><dd>{{patient.nomPrenom}}</dd></div>
+        <div class="info-row"><dt>Téléphone</dt><dd>{{patient.telephone}}</dd></div>
+        <div class="info-row"><dt>Nationalité</dt><dd>{{patient.nationalite}}</dd></div>
+        <div class="info-row"><dt>N° Passeport</dt><dd>{{patient.passeport}}</dd></div>
+        <div class="info-row"><dt>Pays de résidence</dt><dd>{{patient.paysResidence}}</dd></div>
+      </dl>
+    </article>
+
+    <article class="card">
+      <h2 class="card-title">Intervention prévue</h2>
+      <dl class="info-list">
+        <div class="info-row"><dt>Acte principal</dt><dd>{{actePrincipal}}</dd></div>
+        <div class="info-row"><dt>Anesthésie</dt><dd>{{anesthesie}}</dd></div>
+        <div class="info-row"><dt>Durée estimée</dt><dd>{{dureeEstimee}}</dd></div>
+        <div class="info-row"><dt>Date prévue</dt><dd>{{dateIntervention}}</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <!-- ================= PRESTATIONS ================= -->
+  <section>
+    <h2 class="section-title">Détail des prestations médicales</h2>
+    <div class="table-wrap">
+      <table>
+        <colgroup>
+          <col class="col-des"><col class="col-qty"><col class="col-pu"><col class="col-tot">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Désignation</th>
+            <th class="c-qty">Quantité</th>
+            <th>Prix unitaire (TND)</th>
+            <th>Total (TND)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each prestations}}
+          <tr>
+            <td>
+              <span class="item-name">{{this.designation}}</span>
+              {{#if this.detail}}<span class="item-detail">{{this.detail}}</span>{{/if}}
+            </td>
+            <td class="c-qty">{{this.quantite}}</td>
+            <td class="amount">{{this.prixUnitaireFormatted}}</td>
+            <td class="amount c-total">{{this.totalLigneFormatted}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= LOGISTIQUE / CHARGES ================= -->
+  {{#if hasCharges}}
+  <section>
+    <h2 class="section-title">Logistique &amp; charges associées</h2>
+    <div class="table-wrap">
+      <table>
+        <colgroup>
+          <col class="col-des"><col class="col-qty"><col class="col-pu"><col class="col-tot">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Catégorie</th>
+            <th class="c-qty">Détail</th>
+            <th>Description</th>
+            <th>Montant (TND)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each charges}}
+          <tr>
+            <td><span class="item-name">{{this.categorie}}</span></td>
+            <td class="c-qty">1</td>
+            <td>{{this.description}}</td>
+            <td class="amount c-total">{{this.montantFormatted}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{/if}}
+
+  <!-- ================= FINANCE ================= -->
+  <section class="finance-grid">
+    <div class="card-plain">
+      <h2 class="card-title">Modalités de règlement</h2>
+      <dl class="info-list">
+        <div class="info-row"><dt>Mode de règlement</dt><dd>{{modeReglement}}</dd></div>
+        <div class="info-row"><dt>Échéance</dt><dd>{{dateEcheance}}</dd></div>
+      </dl>
+      <p style="margin-top:10px; font-size:9px; line-height:1.55;">
+        Acompte de <strong>{{acompteFormatted}} TND</strong> versé à la confirmation.<br>
+        Le solde doit être acquitté avant ou le jour de l'intervention.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">Conditions financières</h2>
+      <div class="totals">
+        <div class="total-row"><span>Total HT</span><span>{{totalHTFormatted}} TND</span></div>
+        <div class="total-row"><span>TVA (0 %)</span><span>0,000 TND</span></div>
+        <div class="total-row ttc"><span>Total TTC</span><span>{{totalTTCFormatted}} TND</span></div>
+        <div class="total-row"><span>Acompte versé</span><span>{{acompteFormatted}} TND</span></div>
+        <div class="total-row solde"><span>Solde à régler</span><span>{{soldeRestantFormatted}} TND</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <p class="legal">
+      <strong>Conditions &amp; mentions légales.</strong>
+      Document officiel émis par <strong>{{clinic.name}}</strong>. Les prestations médicales et chirurgicales facturées correspondent aux actes prévus et autorisés. Toute réclamation doit être adressée par écrit à la direction médicale sous 15 jours.
+    </p>
+
+    <!-- SIGNATURE PATIENTE -->
+    <div class="signatures">
+      <div class="sign-box">
+        <div>
+          <div class="sign-title">La Patiente</div>
+          <div class="sign-sub">« Bon pour accord »</div>
+        </div>
+        <div class="sign-sub">Fait à Tunis, le {{dateEmission}}</div>
+      </div>
+    </div>
+
+    <div class="foot-bar">
+      <span>★ {{clinic.name}} &nbsp;·&nbsp; {{clinic.address}} &nbsp;·&nbsp; TÉL : {{clinic.phone}} ★</span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
