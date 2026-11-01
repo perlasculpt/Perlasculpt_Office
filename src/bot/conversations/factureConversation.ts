@@ -486,9 +486,9 @@ export async function createDocumentConversation(
       const docObject = doc.toObject ? doc.toObject() : doc;
 
       // 🚨 HEDHA ELLI BEsh YKHLI EL QUANTITÉ YODH'HER FIL PDF
+      docObject.prestations = prestations;
       const payloadPdf = {
         ...docObject,
-        prestations: prestations,
         nuitsClinique: String(nuitsClinique),        // 👈 Le nombre de nuits clinique
         nbNuitsHotelNum: String(nbNuitsHotelNum),    // 👈 Le nombre de nuits hôtel
         sousTotalPrestations: totalPrestationsTNDCalc.toFixed(2),
